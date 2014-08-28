@@ -1,0 +1,174 @@
+<html>
+	<head>
+		<title>WebGL</title>
+		<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1"/>
+		
+		<script type="text/javascript" src="jquery-1.4.4.min.js"></script>
+		<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+		<script type="text/javascript" src="common.js"></script>
+		<script type="text/javascript" src="shaderProgram.js"></script>
+		<script type="text/javascript" src="webgl-utils.js"></script>
+		<script type="text/javascript" src="benchmarker.js"></script>
+		<script type="text/javascript" src="camera.js"></script>
+		<script type="text/javascript" src="keyboard.js"></script>
+		<script type="text/javascript" src="square.js"></script>
+		<script type="text/javascript" src="cube.js"></script>
+		<script type="text/javascript" src="sphere.js"></script>
+		<script type="text/javascript" src="grid.js"></script>
+		<script type="text/javascript" src="simplex.js"></script>
+		
+		<script type="text/javascript">
+			// init globals
+			var gl;
+			var t1 = new Date().getTime();
+			var objects = [];
+			var transparentObjects = [];
+			var run = true;
+			var pMatrix = mat4.create(); // perspective matrix
+			var mvMatrix = mat4.create(); // model-view matrix
+			var mvMatrixStack = []; // stack of model-view matrices
+			var cam = new Camera();
+			var lightDirection = vec3.create([0.1, 0.4, -0.8]);
+
+			function init() {
+				// lesson 1 - starting
+				// lesson 2 - color
+				// lesson 3 - animation
+				// lesson 4 - 3D
+				// lesson 5 - textures
+				// lesson 6 - mip mapping textures
+				// 7 - lighting
+				// 8 - transparency
+				// 9 - many objects
+				// 10 - doom
+				// 11 - sphere + lighting + mouse
+				// 12 - light from point
+				// 13 - per pixel light from point
+				// 14 - teapot
+				// 15 - specular globe
+				// 16 - frame buffer
+				
+				// STRESS TESTING:
+				// --------------
+				// i can handle 5 spheres sub divided to depth 6 before crashing (runs out of memory dividing them?)
+				// i can handle 300 cubes before performance suffers (frames per second starts to drop below 60)
+				// i can handle 300 spheres sub divided to depth 2 before performance suffers
+				// i can handle 8 65k grids before performance suffers
+				// i can do 100 divisions per vertex with two big spheres before performance suffers
+
+				// atmospheres
+				// blend together different simplex frequencies, understand zeroing it, etc
+				// voronoi noise!
+				// bump maps!
+				// tolerate jumpy frames, when properly handle movement
+				
+				gl = initGl();
+				
+				// init shader programs
+				var shaderProgram1 = new ShaderProgram(gl, 'shaders/shader1.vert', 'shaders/shader1.frag'); // just aVtxPos
+				shaderProgram1.setUniformLocation('uPMatrix');
+				shaderProgram1.setUniformLocation('uMvMatrix');
+				shaderProgram1.setAttribLocation('aVtxPos');
+
+				var shaderProgram2 = new ShaderProgram(gl, 'shaders/shader2.vert', 'shaders/shader2.frag'); // aVtxPos with 0.5 alpha
+				shaderProgram2.setUniformLocation('uPMatrix');
+				shaderProgram2.setUniformLocation('uMvMatrix');
+				shaderProgram2.setAttribLocation('aVtxPos');
+
+				var shaderProgram3 = new ShaderProgram(gl, 'shaders/shader3.vert', 'shaders/shader3.frag'); // aVtxPos and aVtxNor
+				shaderProgram3.setUniformLocation('uPMatrix');
+				shaderProgram3.setUniformLocation('uMvMatrix');
+				shaderProgram3.setUniformLocation('uLightDirection');
+				shaderProgram3.setAttribLocation('aVtxPos');
+				shaderProgram3.setAttribLocation('aVtxNor');
+
+				// init objects
+
+				//var adjust = function(v) { return [v[0], v[1], v[2]]; };
+				var noise = new SimplexNoise();
+				var adjust = function(v) {
+					var n = 600;
+					var radius = 1 + 0.03 * noise.noises3d(v[0] / n, v[1] / n, v[2] / n, 4, 0.95);
+					var radius = 1 + 0.01 * noise.noises3d(2 * v[0] / n, 2 * v[1] / n, 2 * v[2] / n, 4, 0.95);
+					return [radius * v[0], radius * v[1], radius * v[2]];
+				}
+				
+				var sphere = new Sphere(gl, shaderProgram3, vec3.create([0,-310,0]), 300, 6, adjust);
+				objects.push(sphere);
+
+				var sphere2 = new Sphere(gl, shaderProgram3, vec3.create([0,-151,-500]), 200, 4, adjust);
+				objects.push(sphere2);
+				
+				//var transparentSquare = new Square(gl, shaderProgram2, vec3.create([-0.8,0.8,-13]));
+				//transparentObjects.push(transparentSquare);
+				//var transparentSquare2 = new Square(gl, shaderProgram2, vec3.create([0.8,-0.8,-9]));
+				//transparentObjects.push(transparentSquare2);
+
+				gl.clearColor(0, 0, 0, 1);
+				gl.enable(gl.DEPTH_TEST);
+				gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+				document.onkeydown = handleKeyDown;
+				document.onkeyup = handleKeyUp;
+
+				tick();
+			}
+			
+			function tick() {
+				var t2 = new Date().getTime();
+				if (t1) benchmarker.setFrameTime(t2 - t1);
+				t1 = new Date().getTime();
+
+				if (run)
+					requestAnimFrame(tick);
+
+				handleKeys();
+				draw();
+			}
+			
+			function draw() {
+				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+				// start model-view matrix at the origin...
+				mat4.identity(mvMatrix);
+				// ... then apply camera rotation...
+				mat4.multiply(mvMatrix, quat4.toMat4(cam.q));
+				// ... then camera translation...
+				mat4.translate(mvMatrix, cam.p);
+
+				// opaque objects
+				gl.disable(gl.BLEND);
+				for (var i = 0; i < objects.length; i++) {
+					objects[i].draw(cam);
+				}
+				
+				// transparent objects
+				gl.enable(gl.BLEND);
+				for (var i = 0; i < transparentObjects.length; i++) { // TODO: order back to front
+					transparentObjects[i].draw(cam);
+				}
+			}
+			
+		</script>
+		
+		<style type="text/css">
+			body { margin:0; padding:0; background:#333; }
+			#benchmarker { border:1px solid white; height:40px; position:absolute; top:0; opacity:0.3; }
+			#benchmarker .bin { background-color:grey; float:left; width:30px; height:0px; border:1px solid black; text-align:center; }
+			#benchmarker .bin.avg { height:38px; }
+		</style>
+	</head>
+	
+	<body onload="init();">
+
+		<canvas id="canvas" width="1200" height="400"></canvas>
+
+		<div id="benchmarker"></div>
+		
+		<script type="text/javascript">
+			var benchmarker = new Benchmarker($('#benchmarker'));
+			benchmarker.createBins(10);
+		</script>
+
+	</body>
+</html>
+
