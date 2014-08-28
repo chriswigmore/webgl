@@ -1,5 +1,5 @@
 // ====
-// C:\inetpub\wwwroot\webgl\shaders\shader1.frag
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader1.frag
 // ----
 precision mediump float;
 
@@ -10,7 +10,7 @@ void main(void) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\shaders\shader1.vert
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader1.vert
 // ----
 attribute vec3 aVtxPos;
 
@@ -24,7 +24,7 @@ void main(void) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\shaders\shader2.frag
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader2.frag
 // ----
 precision mediump float;
 
@@ -35,7 +35,7 @@ void main(void) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\shaders\shader2.vert
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader2.vert
 // ----
 attribute vec3 aVtxPos;
 
@@ -49,7 +49,7 @@ void main(void) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\shaders\shader3.frag
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader3.frag
 // ----
 precision mediump float;
 
@@ -64,7 +64,7 @@ void main(void) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\shaders\shader3.vert
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader3.vert
 // ----
 attribute vec3 aVtxPos;
 attribute vec3 aVtxNor;
@@ -85,7 +85,7 @@ void main(void) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\benchmarker.js
+// C:\inetpub\wwwroot\WebGL\code\benchmarker.js
 // ----
 function Benchmarker(domElement) {
 	
@@ -142,7 +142,7 @@ function Benchmarker(domElement) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\box.js
+// C:\inetpub\wwwroot\WebGL\code\box.js
 // ----
 function Box(gl, p) {
 	this.p = p;
@@ -243,7 +243,7 @@ Box.prototype.animate = function (elapsedTime) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\camera.js
+// C:\inetpub\wwwroot\WebGL\code\camera.js
 // ----
 function Camera() {
     this.q = quat4.create([0, 0, 0, 1]);
@@ -282,7 +282,7 @@ Camera.prototype.getFrustum = function () {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\common.js
+// C:\inetpub\wwwroot\WebGL\code\common.js
 // ----
 // initGl
 function initGl() {
@@ -323,7 +323,7 @@ function popMvMatrix() {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\cube.js
+// C:\inetpub\wwwroot\WebGL\code\cube.js
 // ----
 function Cube(gl, sp, p) { // gl, shaderProgram, position
 
@@ -408,7 +408,7 @@ function Cube(gl, sp, p) { // gl, shaderProgram, position
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\glMatrix-0.9.5.min.js
+// C:\inetpub\wwwroot\WebGL\code\glMatrix-0.9.5.min.js
 // ----
 // glMatrix v0.9.5mdo
 glMatrixArrayType = typeof Float32Array != "undefined" ? Float32Array : typeof WebGLFloatArray != "undefined" ? WebGLFloatArray : Array; var vec3 = {}; vec3.create = function (a) { var b = new glMatrixArrayType(3); if (a) { b[0] = a[0]; b[1] = a[1]; b[2] = a[2] } return b }; vec3.set = function (a, b) { b[0] = a[0]; b[1] = a[1]; b[2] = a[2]; return b }; vec3.add = function (a, b, c) { if (!c || a == c) { a[0] += b[0]; a[1] += b[1]; a[2] += b[2]; return a } c[0] = a[0] + b[0]; c[1] = a[1] + b[1]; c[2] = a[2] + b[2]; return c };
@@ -462,7 +462,7 @@ quat4.fromAngleAxis = function (angle, axis, dest) { if (!dest) dest = quat4.cre
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\grid.js
+// C:\inetpub\wwwroot\WebGL\code\grid.js
 // ----
 function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
 	var vtxPos = [];
@@ -533,8 +533,14 @@ function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\index.html
+// C:\inetpub\wwwroot\WebGL\code\index.html
 // ----
+<!--
+
+TODO: get up and running...
+
+    -->
+
 <html>
 	<head>
 		<title>WebGL</title>
@@ -712,7 +718,7 @@ function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\jquery-1.4.4.min.js
+// C:\inetpub\wwwroot\WebGL\code\jquery-1.4.4.min.js
 // ----
 /*!
  * jQuery JavaScript Library v1.4.4
@@ -884,7 +890,7 @@ b],f.body["scroll"+b],f.documentElement["scroll"+b],f.body["offset"+b],f.documen
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\keyboard.js
+// C:\inetpub\wwwroot\WebGL\code\keyboard.js
 // ----
 var currentlyPressedKeys = {};
 var keyboard = {};
@@ -933,7 +939,7 @@ function handleKeys() {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\shaderProgram.js
+// C:\inetpub\wwwroot\WebGL\code\shaderProgram.js
 // ----
 function ShaderProgram(gl, vShaderPath, fShaderPath) {
 
@@ -1023,7 +1029,7 @@ function ShaderProgram(gl, vShaderPath, fShaderPath) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\simplex.js
+// C:\inetpub\wwwroot\WebGL\code\simplex.js
 // ----
 // Ported from Stefan Gustavson's java implementation
 // http://staffwww.itn.liu.se/~stegu/simplexnoise/simplexnoise.pdf
@@ -1232,7 +1238,7 @@ SimplexNoise.prototype.noises3d = function(xin, yin, zin, nOctaves, persistence)
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\sphere.js
+// C:\inetpub\wwwroot\WebGL\code\sphere.js
 // ----
 function Sphere(gl, sp, p, radius, subDivisionDepth, adjust) {
 	//subDivisionDepth: 0 => 36, 1=> 129, 2 => 486, 3 => 1890, 4 => 7443, 5 => 29529, 6 => 117528
@@ -1452,7 +1458,7 @@ function Sphere(gl, sp, p, radius, subDivisionDepth, adjust) {
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\square.js
+// C:\inetpub\wwwroot\WebGL\code\square.js
 // ----
 function Square(gl, sp, p) { // gl, shaderProgram, position
 
@@ -1495,7 +1501,7 @@ function Square(gl, sp, p) { // gl, shaderProgram, position
 
 
 // ====
-// C:\inetpub\wwwroot\webgl\webgl-utils.js
+// C:\inetpub\wwwroot\WebGL\code\webgl-utils.js
 // ----
 /*
 * Copyright 2010, Google Inc.
