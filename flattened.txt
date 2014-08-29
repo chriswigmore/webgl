@@ -88,158 +88,56 @@ void main(void) {
 // C:\inetpub\wwwroot\WebGL\code\benchmarker.js
 // ----
 function Benchmarker(domElement) {
-	
-	var _bins = [];
-	var _sum = 0;
-	
-	this.createBins = function(nBins) {
-		for (var i = 0; i < nBins; i++) {
-			_bins.push(0);
-			domElement.append('<div class="bin"></div>');
-		}
-		domElement.append('<div class="bin avg">0</div>');
-		
-		domElement.children('.avg').click(function() {
-			if (run)
-				run = false;
-			else
-				run = true;
-				tick();
-		});
 
-	};
-	
-	var _binIndex = 0;
-	
-	this.setFrameTime = function(frameTime) {
-		// recalculate mean
-		if (!isNaN(frameTime)) {
-//			console.log(frameTime + 1);
-			_sum -= _bins[_binIndex];
-			_bins[_binIndex] = frameTime;
-			_sum += _bins[_binIndex];
-		}
+    var _bins = [];
+    var _sum = 0;
 
-		if (_binIndex == 0)
-			domElement.children().eq(_bins.length).text(this.getFramesPerSec());
+    this.createBins = function(nBins) {
+        for (var i = 0; i < nBins; i++) {
+            _bins.push(0);
+            domElement.append('<div class="bin"></div>');
+        }
+        domElement.append('<div class="bin avg">0</div>');
 
-		// _binIndex-th bin set to frameTime
-		var bin = domElement.children().eq(_binIndex);
-		bin.text(frameTime);
-		bin.height(frameTime + 'px');
-		
-		// increment _binIndex
-		_binIndex++;
-		_binIndex = _binIndex % _bins.length;
-	};
-	
-	this.getFramesPerSec = function() {
-		var meanFrameTime = _sum / _bins.length;
-		return (1000 / meanFrameTime).toFixed(0);
-	};
+        domElement.children('.avg').click(function() {
+            if (run)
+                run = false;
+            else
+                run = true;
+            tick();
+        });
+
+    };
+
+    var _binIndex = 0;
+
+    this.setFrameTime = function(frameTime) {
+        // recalculate mean
+        if (!isNaN(frameTime)) {
+            //console.log(frameTime + 1);
+            _sum -= _bins[_binIndex];
+            _bins[_binIndex] = frameTime;
+            _sum += _bins[_binIndex];
+        }
+
+        if (_binIndex == 0)
+            domElement.children().eq(_bins.length).text(this.getFramesPerSec());
+
+        // _binIndex-th bin set to frameTime
+        var bin = domElement.children().eq(_binIndex);
+        bin.text(frameTime);
+        bin.height(frameTime + 'px');
+
+        // increment _binIndex
+        _binIndex++;
+        _binIndex = _binIndex % _bins.length;
+    };
+
+    this.getFramesPerSec = function() {
+        var meanFrameTime = _sum / _bins.length;
+        return (1000 / meanFrameTime).toFixed(0);
+    };
 }
-
-
-
-// ====
-// C:\inetpub\wwwroot\WebGL\code\box.js
-// ----
-function Box(gl, p) {
-	this.p = p;
-	
-	this.buffer = true;
-	this.cacheVertices();
-
-    // create buffers if possible
-    if (gl) {
-        this.vertexPositionBuffer = gl.createBuffer();
-        this.vertexTextureCoordBuffer = gl.createBuffer();
-        this.vertexNormalBuffer = gl.createBuffer();
-        this.vertexIndexBuffer = gl.createBuffer();
-    }
-}
-
-Box.prototype.cacheVertices = function() {
-	this.vertexPositions = [
-							-1.0, -1.0, 1.0,  1.0, -1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, 1.0, 1.0, // Front face
-							-1.0, -1.0, -1.0,  -1.0, 1.0, -1.0,  1.0, 1.0, -1.0,  1.0, -1.0, -1.0, // Back face
-							-1.0, 1.0, -1.0,  -1.0, 1.0, 1.0,  1.0, 1.0, 1.0,  1.0, 1.0, -1.0, // Top face
-							-1.0, -1.0, -1.0,  1.0, -1.0, -1.0,  1.0, -1.0, 1.0,  -1.0, -1.0, 1.0, // Bottom face
-							1.0, -1.0, -1.0,  1.0, 1.0, -1.0,  1.0, 1.0, 1.0,  1.0, -1.0, 1.0, // Right face
-							-1.0, -1.0, -1.0,  -1.0, -1.0, 1.0,  -1.0, 1.0, 1.0,  -1.0, 1.0, -1.0 // Left face
-	];
-
-	this.vertexNormals = [
-							0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0, // Front face
-							0.0, 0.0, -1.0,  0.0, 0.0, -1.0,  0.0, 0.0, -1.0,  0.0, 0.0, -1.0, // Back face
-							0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0,  0.0, 1.0, 0.0, // Top face
-							0.0, -1.0, 0.0,  0.0, -1.0, 0.0,  0.0, -1.0, 0.0,  0.0, -1.0, 0.0, // Bottom face
-							1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0,  1.0, 0.0, 0.0, // Right face
-							-1.0, 0.0, 0.0,  -1.0, 0.0, 0.0,  -1.0, 0.0, 0.0,  -1.0, 0.0, 0.0 // Left face
-	];
-
-	this.vertexTextureCoords = [
-								0.0, 0.0,  1.0, 0.0,  1.0, 1.0,  0.0, 1.0, // Front face
-								1.0, 0.0,  1.0, 1.0,  0.0, 1.0,  0.0, 0.0, // Back face
-								0.0, 1.0,  0.0, 0.0,  1.0, 0.0,  1.0, 1.0, // Top face
-								1.0, 1.0,  0.0, 1.0,  0.0, 0.0,  1.0, 0.0, // Bottom face
-								1.0, 0.0,  1.0, 1.0,  0.0, 1.0,  0.0, 0.0, // Right face
-								0.0, 0.0,  1.0, 0.0,  1.0, 1.0,  0.0, 1.0 // Left face
-	];
-
-	this.vertexIndices = [
-							0, 1, 2, 0, 2, 3,    // Front face
-							4, 5, 6, 4, 6, 7,    // Back face
-							8, 9, 10, 8, 10, 11,  // Top face
-							12, 13, 14, 12, 14, 15, // Bottom face
-							16, 17, 18, 16, 18, 19, // Right face
-							20, 21, 22, 20, 22, 23  // Left face
-	];
-};
-
-Box.prototype.draw = function (cam, gl, texture) {
-	mvPushMatrix();
-
-	gl.disable(gl.BLEND);
-
-	// translate
-	mat4.translate(mvMatrix, this.p);
-	// rotate
-	//mat4.multiply(mvMatrix, moonRotationMatrix);
-
-	gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexPositionBuffer);
-	if (this.buffer) gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertexPositions), gl.STATIC_DRAW);
-	gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
-
-	gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexNormalBuffer);
-	if (this.buffer) gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertexNormals), gl.STATIC_DRAW);
-	gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, 3, gl.FLOAT, false, 0, 0);
-	
-//	gl.activeTexture(gl.TEXTURE0);
-//	gl.bindTexture(gl.TEXTURE_2D, texture);
-//	gl.uniform1i(shaderProgram.samplerUniform, 0);
-
-	gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexTextureCoordBuffer);
-	if (this.buffer) gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertexTextureCoords), gl.STATIC_DRAW);
-	gl.vertexAttribPointer(shaderProgram.textureCoordAttribute, 2, gl.FLOAT, false, 0, 0);
-
-	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.vertexIndexBuffer);
-	if (this.buffer) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.vertexIndices), gl.STATIC_DRAW);
-	gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexPositionBuffer);
-
-	this.buffer = false;
-	
-	setMatrixUniforms();
-
-	gl.drawElements(gl.TRIANGLES, this.vertexIndices.length, gl.UNSIGNED_SHORT, 0);
-	drawnVertices += this.vertexIndices.length;
-
-	mvPopMatrix();
-};
-
-Box.prototype.animate = function (elapsedTime) {
-};
-
 
 
 // ====
@@ -276,9 +174,8 @@ Camera.prototype.fly = function (delta) {
 };
 
 Camera.prototype.getFrustum = function () {
-	return null;
+    return null;
 };
-
 
 
 // ====
@@ -286,24 +183,23 @@ Camera.prototype.getFrustum = function () {
 // ----
 // initGl
 function initGl() {
-	var canvas = document.getElementById('canvas');
-	try
-	{
-		var gl = canvas.getContext('experimental-webgl');
-		gl.viewportWidth = canvas.width;
-		gl.viewportHeight = canvas.height;
-	}
-	catch (e) { }
+    var canvas = document.getElementById('canvas');
+    try {
+        var gl = canvas.getContext('experimental-webgl');
+        gl.viewportWidth = canvas.width;
+        gl.viewportHeight = canvas.height;
+    } catch(e) {
+    }
 
-	if (!gl) {
-		alert('Could not initialise WebGL');
-		return;
-	}
-	
-	gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
-	mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 10000, pMatrix);
+    if (!gl) {
+        alert('Could not initialise WebGL');
+        return null;
+    }
 
-	return gl;
+    gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+    mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 10000, pMatrix);
+
+    return gl;
 }
 
 
@@ -319,7 +215,6 @@ function popMvMatrix() {
     }
     mvMatrix = mvMatrixStack.pop();
 }
-
 
 
 // ====
@@ -367,44 +262,45 @@ function Cube(gl, sp, p) { // gl, shaderProgram, position
 	var vtxPosBuf;
 	var vtxNorBuf;
 	var vtxIndBuf;
-	
-	if (gl) {
-		vtxPosBuf = gl.createBuffer();
-		gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxPos), gl.STATIC_DRAW);
-		vtxNorBuf = gl.createBuffer();
-		gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxNor), gl.STATIC_DRAW);
-		vtxIndBuf = gl.createBuffer();
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
-		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(vtxInd), gl.STATIC_DRAW);
-	}
 
-	this.draw = function(cam) { // camera
-		gl.useProgram(sp);
-		
-		pushMvMatrix();
-		
-		mat4.translate(mvMatrix, p); // translation by p
-		//mat4.multiply(mvMatrix, q); // rotation by q
-		
-		gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
-		gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
-		
-		gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
-		gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
-		
-		gl.uniformMatrix4fv(sp['uPMatrix'], false, pMatrix);
-		gl.uniformMatrix4fv(sp['uMvMatrix'], false, mvMatrix);
-		gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
-	
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
-		gl.drawElements(gl.TRIANGLES, vtxInd.length, gl.UNSIGNED_SHORT, 0);
+    if (gl) {
+        vtxPosBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxPos), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(sp['aVtxPos']);
+        vtxNorBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxNor), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(sp['aVtxNor']);
+        vtxIndBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(vtxInd), gl.STATIC_DRAW);
+    }
 
-		popMvMatrix();
-	}
+    this.draw = function(cam) { // camera
+        gl.useProgram(sp);
+
+        pushMvMatrix();
+
+        mat4.translate(mvMatrix, p); // translation by p
+        //mat4.multiply(mvMatrix, q); // rotation by q
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
+        gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
+        gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
+
+        gl.uniformMatrix4fv(sp['uPMatrix'], false, pMatrix);
+        gl.uniformMatrix4fv(sp['uMvMatrix'], false, mvMatrix);
+        gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
+        gl.drawElements(gl.TRIANGLES, vtxInd.length, gl.UNSIGNED_SHORT, 0);
+
+        popMvMatrix();
+    };
 }
-
 
 
 // ====
@@ -497,9 +393,11 @@ function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
 		vtxPosBuf = gl.createBuffer();
 		gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
 		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxPos), gl.STATIC_DRAW);
+		gl.enableVertexAttribArray(sp['aVtxPos']);
 		vtxNorBuf = gl.createBuffer();
 		gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
 		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxNor), gl.STATIC_DRAW);
+		gl.enableVertexAttribArray(sp['aVtxNor']);
 		vtxIndBuf = gl.createBuffer();
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
 		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(vtxInd), gl.STATIC_DRAW);
@@ -542,179 +440,182 @@ TODO: get up and running...
     -->
 
 <html>
-	<head>
-		<title>WebGL</title>
-		<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1"/>
-		
-		<script type="text/javascript" src="jquery-1.4.4.min.js"></script>
-		<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
-		<script type="text/javascript" src="common.js"></script>
-		<script type="text/javascript" src="shaderProgram.js"></script>
-		<script type="text/javascript" src="webgl-utils.js"></script>
-		<script type="text/javascript" src="benchmarker.js"></script>
-		<script type="text/javascript" src="camera.js"></script>
-		<script type="text/javascript" src="keyboard.js"></script>
-		<script type="text/javascript" src="square.js"></script>
-		<script type="text/javascript" src="cube.js"></script>
-		<script type="text/javascript" src="sphere.js"></script>
-		<script type="text/javascript" src="grid.js"></script>
-		<script type="text/javascript" src="simplex.js"></script>
-		
-		<script type="text/javascript">
-			// init globals
-			var gl;
-			var t1 = new Date().getTime();
-			var objects = [];
-			var transparentObjects = [];
-			var run = true;
-			var pMatrix = mat4.create(); // perspective matrix
-			var mvMatrix = mat4.create(); // model-view matrix
-			var mvMatrixStack = []; // stack of model-view matrices
-			var cam = new Camera();
-			var lightDirection = vec3.create([0.1, 0.4, -0.8]);
+    <head>
+        <title>WebGL</title>
+        <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1"/>
 
-			function init() {
-				// lesson 1 - starting
-				// lesson 2 - color
-				// lesson 3 - animation
-				// lesson 4 - 3D
-				// lesson 5 - textures
-				// lesson 6 - mip mapping textures
-				// 7 - lighting
-				// 8 - transparency
-				// 9 - many objects
-				// 10 - doom
-				// 11 - sphere + lighting + mouse
-				// 12 - light from point
-				// 13 - per pixel light from point
-				// 14 - teapot
-				// 15 - specular globe
-				// 16 - frame buffer
-				
-				// STRESS TESTING:
-				// --------------
-				// i can handle 5 spheres sub divided to depth 6 before crashing (runs out of memory dividing them?)
-				// i can handle 300 cubes before performance suffers (frames per second starts to drop below 60)
-				// i can handle 300 spheres sub divided to depth 2 before performance suffers
-				// i can handle 8 65k grids before performance suffers
-				// i can do 100 divisions per vertex with two big spheres before performance suffers
+        <script type="text/javascript" src="jquery-1.4.4.min.js"></script>
+        <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+        <script type="text/javascript" src="common.js"></script>
+        <script type="text/javascript" src="shaderProgram.js"></script>
+        <script type="text/javascript" src="webgl-utils.js"></script>
+        <script type="text/javascript" src="benchmarker.js"></script>
+        <script type="text/javascript" src="camera.js"></script>
+        <script type="text/javascript" src="keyboard.js"></script>
+        <script type="text/javascript" src="square.js"></script>
+        <script type="text/javascript" src="cube.js"></script>
+        <script type="text/javascript" src="sphere.js"></script>
+        <script type="text/javascript" src="grid.js"></script>
+        <script type="text/javascript" src="simplex.js"></script>
 
-				// atmospheres
-				// blend together different simplex frequencies, understand zeroing it, etc
-				// voronoi noise!
-				// bump maps!
-				// tolerate jumpy frames, when properly handle movement
-				
-				gl = initGl();
-				
-				// init shader programs
-				var shaderProgram1 = new ShaderProgram(gl, 'shaders/shader1.vert', 'shaders/shader1.frag'); // just aVtxPos
-				shaderProgram1.setUniformLocation('uPMatrix');
-				shaderProgram1.setUniformLocation('uMvMatrix');
-				shaderProgram1.setAttribLocation('aVtxPos');
+        <script type="text/javascript">
+            // init globals
+            var gl;
+            var t1 = new Date().getTime();
+            var objects = [];
+            var transparentObjects = [];
+            var run = true;
+            var pMatrix = mat4.create(); // perspective matrix
+            var mvMatrix = mat4.create(); // model-view matrix
+            var mvMatrixStack = []; // stack of model-view matrices
+            var cam = new Camera();
+            var lightDirection = vec3.create([0.1, 0.4, 0.8]);
 
-				var shaderProgram2 = new ShaderProgram(gl, 'shaders/shader2.vert', 'shaders/shader2.frag'); // aVtxPos with 0.5 alpha
-				shaderProgram2.setUniformLocation('uPMatrix');
-				shaderProgram2.setUniformLocation('uMvMatrix');
-				shaderProgram2.setAttribLocation('aVtxPos');
+            function init() {
+                // lesson 1 - starting
+                // lesson 2 - color
+                // lesson 3 - animation
+                // lesson 4 - 3D
+                // lesson 5 - textures
+                // lesson 6 - mip mapping textures
+                // 7 - lighting
+                // 8 - transparency
+                // 9 - many objects
+                // 10 - doom
+                // 11 - sphere + lighting + mouse
+                // 12 - light from point
+                // 13 - per pixel light from point
+                // 14 - teapot
+                // 15 - specular globe
+                // 16 - frame buffer
 
-				var shaderProgram3 = new ShaderProgram(gl, 'shaders/shader3.vert', 'shaders/shader3.frag'); // aVtxPos and aVtxNor
-				shaderProgram3.setUniformLocation('uPMatrix');
-				shaderProgram3.setUniformLocation('uMvMatrix');
-				shaderProgram3.setUniformLocation('uLightDirection');
-				shaderProgram3.setAttribLocation('aVtxPos');
-				shaderProgram3.setAttribLocation('aVtxNor');
+                // STRESS TESTING:
+                // --------------
+                // i can handle 5 spheres sub divided to depth 6 before crashing (runs out of memory dividing them?)
+                // i can handle 300 cubes before performance suffers (frames per second starts to drop below 60)
+                // i can handle 300 spheres sub divided to depth 2 before performance suffers
+                // i can handle 8 65k grids before performance suffers
+                // i can do 100 divisions per vertex with two big spheres before performance suffers
 
-				// init objects
+                // atmospheres
+                // blend together different simplex frequencies, understand zeroing it, etc
+                // voronoi noise!
+                // bump maps!
+                // tolerate jumpy frames, when properly handle movement
 
-				//var adjust = function(v) { return [v[0], v[1], v[2]]; };
-				var noise = new SimplexNoise();
-				var adjust = function(v) {
-					var n = 600;
-					var radius = 1 + 0.03 * noise.noises3d(v[0] / n, v[1] / n, v[2] / n, 4, 0.95);
-					var radius = 1 + 0.01 * noise.noises3d(2 * v[0] / n, 2 * v[1] / n, 2 * v[2] / n, 4, 0.95);
-					return [radius * v[0], radius * v[1], radius * v[2]];
-				}
-				
-				var sphere = new Sphere(gl, shaderProgram3, vec3.create([0,-310,0]), 300, 6, adjust);
-				objects.push(sphere);
+                gl = initGl();
 
-				var sphere2 = new Sphere(gl, shaderProgram3, vec3.create([0,-151,-500]), 200, 4, adjust);
-				objects.push(sphere2);
-				
-				//var transparentSquare = new Square(gl, shaderProgram2, vec3.create([-0.8,0.8,-13]));
-				//transparentObjects.push(transparentSquare);
-				//var transparentSquare2 = new Square(gl, shaderProgram2, vec3.create([0.8,-0.8,-9]));
-				//transparentObjects.push(transparentSquare2);
+                // init shader programs
+                var shaderProgram1 = new ShaderProgram(gl, 'shaders/shader1.vert', 'shaders/shader1.frag'); // just aVtxPos
+                shaderProgram1.setUniformLocation('uPMatrix');
+                shaderProgram1.setUniformLocation('uMvMatrix');
+                shaderProgram1.setAttribLocation('aVtxPos');
 
-				gl.clearColor(0, 0, 0, 1);
-				gl.enable(gl.DEPTH_TEST);
-				gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-				document.onkeydown = handleKeyDown;
-				document.onkeyup = handleKeyUp;
+                var shaderProgram2 = new ShaderProgram(gl, 'shaders/shader2.vert', 'shaders/shader2.frag'); // aVtxPos with 0.5 alpha
+                shaderProgram2.setUniformLocation('uPMatrix');
+                shaderProgram2.setUniformLocation('uMvMatrix');
+                shaderProgram2.setAttribLocation('aVtxPos');
 
-				tick();
-			}
-			
-			function tick() {
-				var t2 = new Date().getTime();
-				if (t1) benchmarker.setFrameTime(t2 - t1);
-				t1 = new Date().getTime();
+                var shaderProgram3 = new ShaderProgram(gl, 'shaders/shader3.vert', 'shaders/shader3.frag'); // aVtxPos and aVtxNor
+                shaderProgram3.setUniformLocation('uPMatrix');
+                shaderProgram3.setUniformLocation('uMvMatrix');
+                shaderProgram3.setUniformLocation('uLightDirection');
+                shaderProgram3.setAttribLocation('aVtxPos');
+                shaderProgram3.setAttribLocation('aVtxNor');
 
-				if (run)
-					requestAnimFrame(tick);
+                // init objects
 
-				handleKeys();
-				draw();
-			}
-			
-			function draw() {
-				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+                var noise = new SimplexNoise();
+                var adjust = function (v) {
+                    //return [v[0], v[1], v[2]];
+                    var n = 600;
+                    var radius = 1 + 0.01 * noise.noises3d(2 * v[0] / n, 2 * v[1] / n, 2 * v[2] / n, 4, 0.95);
+                    return [radius * v[0], radius * v[1], radius * v[2]];
+                };
 
-				// start model-view matrix at the origin...
-				mat4.identity(mvMatrix);
-				// ... then apply camera rotation...
-				mat4.multiply(mvMatrix, quat4.toMat4(cam.q));
-				// ... then camera translation...
-				mat4.translate(mvMatrix, cam.p);
+                //var transparentSquare = new Square(gl, shaderProgram2, vec3.create([-0.8, 0.8, -13]));
+                //transparentObjects.push(transparentSquare);
+                //var transparentSquare2 = new Square(gl, shaderProgram2, vec3.create([0.8, -0.8, -9]));
+                //transparentObjects.push(transparentSquare2);
 
-				// opaque objects
-				gl.disable(gl.BLEND);
-				for (var i = 0; i < objects.length; i++) {
-					objects[i].draw(cam);
-				}
-				
-				// transparent objects
-				gl.enable(gl.BLEND);
-				for (var i = 0; i < transparentObjects.length; i++) { // TODO: order back to front
-					transparentObjects[i].draw(cam);
-				}
-			}
-			
-		</script>
-		
-		<style type="text/css">
-			body { margin:0; padding:0; background:#333; }
-			#benchmarker { border:1px solid white; height:40px; position:absolute; top:0; opacity:0.3; }
-			#benchmarker .bin { background-color:grey; float:left; width:30px; height:0px; border:1px solid black; text-align:center; }
-			#benchmarker .bin.avg { height:38px; }
-		</style>
-	</head>
-	
-	<body onload="init();">
+                //var cube = new Cube(gl, shaderProgram3, vec3.create([-3, -2, -10]));
+                //objects.push(cube);
 
-		<canvas id="canvas" width="1200" height="400"></canvas>
+                //var sphere = new Sphere(gl, shaderProgram3, vec3.create([0,-310,0]), 300, 6, adjust);
+                //objects.push(sphere);
+                //var sphere2 = new Sphere(gl, shaderProgram3, vec3.create([0,-151,-500]), 200, 4, adjust);
+                //objects.push(sphere2);
 
-		<div id="benchmarker"></div>
-		
-		<script type="text/javascript">
-			var benchmarker = new Benchmarker($('#benchmarker'));
-			benchmarker.createBins(10);
-		</script>
+                //var grid = new Grid(gl, shaderProgram3, vec3.create([0, -1, 0]), 16);
+                //objects.push(grid);
 
-	</body>
+                gl.clearColor(0, 0, 0, 1);
+                gl.enable(gl.DEPTH_TEST);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                document.onkeydown = handleKeyDown;
+                document.onkeyup = handleKeyUp;
+
+                tick();
+            }
+
+            function tick() {
+                var t2 = new Date().getTime();
+                if (t1) benchmarker.setFrameTime(t2 - t1);
+                t1 = new Date().getTime();
+
+                if (run)
+                    requestAnimFrame(tick);
+
+                handleKeys();
+                draw();
+            }
+
+            function draw() {
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                // start model-view matrix at the origin...
+                mat4.identity(mvMatrix);
+                // ... then apply camera rotation...
+                mat4.multiply(mvMatrix, quat4.toMat4(cam.q));
+                // ... then camera translation...
+                mat4.translate(mvMatrix, cam.p);
+
+                // opaque objects
+                gl.disable(gl.BLEND);
+                for (var i = 0; i < objects.length; i++) {
+                    objects[i].draw(cam);
+                }
+
+                // transparent objects
+                gl.enable(gl.BLEND);
+                for (i = 0; i < transparentObjects.length; i++) { // TODO: order back to front
+                    transparentObjects[i].draw(cam);
+                }
+            }
+
+        </script>
+
+        <style type="text/css">
+            body { margin:0; padding:0; background:#333; }
+            #benchmarker { border:1px solid white; height:40px; position:absolute; top:0; opacity:0.3; }
+            #benchmarker .bin { background-color:grey; float:left; width:30px; height:0px; border:1px solid black; text-align:center; }
+            #benchmarker .bin.avg { height:38px; }
+        </style>
+    </head>
+
+    <body onload="init();">
+
+        <canvas id="canvas" width="1200" height="400"></canvas>
+
+        <div id="benchmarker"></div>
+
+        <script type="text/javascript">
+            var benchmarker = new Benchmarker($('#benchmarker'));
+            benchmarker.createBins(10);
+        </script>
+
+    </body>
 </html>
-
 
 
 // ====
@@ -953,7 +854,6 @@ function ShaderProgram(gl, vShaderPath, fShaderPath) {
 
 	program.setAttribLocation = function(name) {
 		this[name] = gl.getAttribLocation(this, name);
-		gl.enableVertexAttribArray(this[name]);
 	};
 
 	program.setUniformLocation = function(name) {
@@ -1004,7 +904,6 @@ function ShaderProgram(gl, vShaderPath, fShaderPath) {
 		gl.compileShader(shader);
 		if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
 			throw gl.getShaderInfoLog(shader);
-			return null;
 		}
 	
 		return shader;
@@ -1422,37 +1321,39 @@ function Sphere(gl, sp, p, radius, subDivisionDepth, adjust) {
 		vtxPosBuf = gl.createBuffer();
 		gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
 		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxPos), gl.STATIC_DRAW);
+		gl.enableVertexAttribArray(sp['aVtxPos']);
 		vtxNorBuf = gl.createBuffer();
 		gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
 		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxNor), gl.STATIC_DRAW);
+		gl.enableVertexAttribArray(sp['aVtxNor']);
 		vtxIndBuf = gl.createBuffer();
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
 		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(vtxInd), gl.STATIC_DRAW);
 	}
 
-	this.draw = function(cam) { // camera
-		gl.useProgram(sp);
-		
-		pushMvMatrix();
-		
-		mat4.translate(mvMatrix, p); // translation by p
-		//mat4.multiply(mvMatrix, q); // rotation by q
-		
-		gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
-		gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
+    this.draw = function(cam) { // camera
+        gl.useProgram(sp);
 
-		gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
-		gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
+        pushMvMatrix();
 
-		gl.uniformMatrix4fv(sp['uPMatrix'], false, pMatrix);
-		gl.uniformMatrix4fv(sp['uMvMatrix'], false, mvMatrix);
-		gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
+        mat4.translate(mvMatrix, p); // translation by p
+        //mat4.multiply(mvMatrix, q); // rotation by q
 
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
-		gl.drawElements(gl.TRIANGLES, vtxInd.length, gl.UNSIGNED_SHORT, 0);
-		
-		popMvMatrix();
-	}
+        gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
+        gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
+        gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
+
+        gl.uniformMatrix4fv(sp['uPMatrix'], false, pMatrix);
+        gl.uniformMatrix4fv(sp['uMvMatrix'], false, mvMatrix);
+        gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
+        gl.drawElements(gl.TRIANGLES, vtxInd.length, gl.UNSIGNED_SHORT, 0);
+
+        popMvMatrix();
+    };
 }
 
 
@@ -1478,6 +1379,7 @@ function Square(gl, sp, p) { // gl, shaderProgram, position
 		vtxPosBuf = gl.createBuffer();
 		gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
 		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxPos), gl.STATIC_DRAW);
+		gl.enableVertexAttribArray(sp['aVtxPos']);
 	}
 
 	this.draw = function(cam) { // camera
