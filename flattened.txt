@@ -1,28 +1,5 @@
 // ====
-// C:\inetpub\wwwroot\WebGL\code\shaders\shader1.frag
-// ----
-precision mediump float;
-
-void main(void) {
-	gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-}
-
-
-// ====
-// C:\inetpub\wwwroot\WebGL\code\shaders\shader1.vert
-// ----
-attribute vec3 aVtxPos;
-
-uniform mat4 uMvMatrix;
-uniform mat4 uPMatrix;
-
-void main(void) {
-	gl_Position = uPMatrix * uMvMatrix * vec4(aVtxPos, 1.0);
-}
-
-
-// ====
-// C:\inetpub\wwwroot\WebGL\code\shaders\shader2.frag
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader2d.frag
 // ----
 precision mediump float;
 
@@ -32,7 +9,7 @@ void main(void) {
 
 
 // ====
-// C:\inetpub\wwwroot\WebGL\code\shaders\shader2.vert
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader2d.vert
 // ----
 attribute vec3 aVtxPos;
 
@@ -45,21 +22,20 @@ void main(void) {
 
 
 // ====
-// C:\inetpub\wwwroot\WebGL\code\shaders\shader3.frag
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader3d.frag
 // ----
 precision mediump float;
 
 varying vec3 vLightWeight;
 
 void main(void) {
-//	gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
 	vec3 color = vec3(1.0, 1.0, 1.0);
 	gl_FragColor = vec4(color * vLightWeight, 1.0);
 }
 
 
 // ====
-// C:\inetpub\wwwroot\WebGL\code\shaders\shader3.vert
+// C:\inetpub\wwwroot\WebGL\code\shaders\shader3d.vert
 // ----
 attribute vec3 aVtxPos;
 attribute vec3 aVtxNor;
@@ -81,31 +57,31 @@ void main(void) {
 // ====
 // C:\inetpub\wwwroot\WebGL\code\benchmarker.js
 // ----
-function Benchmarker(domElement) {
+function Benchmarker($benchmarker) {
+    var self = {};
 
+// ReSharper disable InconsistentNaming
     var _bins = [];
     var _sum = 0;
+    var _binIndex = 0;
+// ReSharper restore InconsistentNaming
 
-    this.createBins = function(nBins) {
+    self.run = true;
+
+    self.createBins = function (nBins) {
         for (var i = 0; i < nBins; i++) {
             _bins.push(0);
-            domElement.append('<div class="bin"></div>');
+            $benchmarker.append('<div class="bin"></div>');
         }
-        domElement.append('<div class="bin avg">0</div>');
+        $benchmarker.append('<div class="bin avg">0</div>');
 
-        domElement.children('.avg').click(function() {
-            if (run)
-                run = false;
-            else
-                run = true;
-            tick();
+        $benchmarker.children('.avg').click(function () {
+            self.run = !self.run;
+            webgl.common.tick();
         });
-
     };
 
-    var _binIndex = 0;
-
-    this.setFrameTime = function(frameTime) {
+    self.setFrameTime = function (frameTime) {
         // recalculate mean
         if (!isNaN(frameTime)) {
             //console.log(frameTime + 1);
@@ -115,10 +91,10 @@ function Benchmarker(domElement) {
         }
 
         if (_binIndex == 0)
-            domElement.children().eq(_bins.length).text(this.getFramesPerSec());
+            $benchmarker.children().eq(_bins.length).text(this.getFramesPerSec());
 
         // _binIndex-th bin set to frameTime
-        var bin = domElement.children().eq(_binIndex);
+        var bin = $benchmarker.children().eq(_binIndex);
         bin.text(frameTime);
         bin.height(frameTime + 'px');
 
@@ -127,10 +103,12 @@ function Benchmarker(domElement) {
         _binIndex = _binIndex % _bins.length;
     };
 
-    this.getFramesPerSec = function() {
+    self.getFramesPerSec = function () {
         var meanFrameTime = _sum / _bins.length;
         return (1000 / meanFrameTime).toFixed(0);
     };
+
+    return self;
 }
 
 
@@ -170,45 +148,6 @@ Camera.prototype.fly = function (delta) {
 Camera.prototype.getFrustum = function () {
     return null;
 };
-
-
-// ====
-// C:\inetpub\wwwroot\WebGL\code\common.js
-// ----
-// initGl
-function initGl() {
-    var canvas = document.getElementById('canvas');
-    try {
-        var gl = canvas.getContext('experimental-webgl');
-        gl.viewportWidth = canvas.width;
-        gl.viewportHeight = canvas.height;
-    } catch(e) {
-    }
-
-    if (!gl) {
-        alert('Could not initialise WebGL');
-        return null;
-    }
-
-    gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
-    mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 10000, pMatrix);
-
-    return gl;
-}
-
-
-function pushMvMatrix() {
-    var copy = mat4.create();
-    mat4.set(mvMatrix, copy);
-    mvMatrixStack.push(copy);
-}
-
-function popMvMatrix() {
-    if (mvMatrixStack.length == 0) {
-        throw 'No matrices on stack to pop';
-    }
-    mvMatrix = mvMatrixStack.pop();
-}
 
 
 // ====
@@ -274,10 +213,10 @@ function Cube(gl, sp, p) { // gl, shaderProgram, position
     this.draw = function(cam) { // camera
         gl.useProgram(sp);
 
-        pushMvMatrix();
+        webgl.common.pushMvMatrix();
 
-        mat4.translate(mvMatrix, p); // translation by p
-        //mat4.multiply(mvMatrix, q); // rotation by q
+        mat4.translate(webgl.common.mvMatrix, p); // translation by p
+        //mat4.multiply(webgl.common.mvMatrix, q); // rotation by q
 
         gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
         gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
@@ -285,14 +224,14 @@ function Cube(gl, sp, p) { // gl, shaderProgram, position
         gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
         gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
 
-        gl.uniformMatrix4fv(sp['uPMatrix'], false, pMatrix);
-        gl.uniformMatrix4fv(sp['uMvMatrix'], false, mvMatrix);
+        gl.uniformMatrix4fv(sp['uPMatrix'], false, webgl.common.pMatrix);
+        gl.uniformMatrix4fv(sp['uMvMatrix'], false, webgl.common.mvMatrix);
         gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
         gl.drawElements(gl.TRIANGLES, vtxInd.length, gl.UNSIGNED_SHORT, 0);
 
-        popMvMatrix();
+        webgl.common.popMvMatrix();
     };
 }
 
@@ -400,10 +339,10 @@ function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
     this.draw = function(cam) { // camera
         gl.useProgram(sp);
 
-        pushMvMatrix();
+        webgl.common.pushMvMatrix();
 
-        mat4.translate(mvMatrix, p); // translation by p
-        //mat4.multiply(mvMatrix, q); // rotation by q
+        mat4.translate(webgl.common.mvMatrix, p); // translation by p
+        //mat4.multiply(webgl.common.mvMatrix, q); // rotation by q
 
         gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
         gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
@@ -411,14 +350,14 @@ function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
         gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
         gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
 
-        gl.uniformMatrix4fv(sp['uPMatrix'], false, pMatrix);
-        gl.uniformMatrix4fv(sp['uMvMatrix'], false, mvMatrix);
+        gl.uniformMatrix4fv(sp['uPMatrix'], false, webgl.common.pMatrix);
+        gl.uniformMatrix4fv(sp['uMvMatrix'], false, webgl.common.mvMatrix);
         gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
         gl.drawElements(gl.TRIANGLES, vtxInd.length, gl.UNSIGNED_SHORT, 0);
 
-        popMvMatrix();
+        webgl.common.popMvMatrix();
     };
 }
 
@@ -438,10 +377,10 @@ TODO: get up and running...
 
         <script type="text/javascript" src="jquery-1.4.4.min.js"></script>
         <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
-        <script type="text/javascript" src="common.js"></script>
-        <script type="text/javascript" src="shaderProgram.js"></script>
         <script type="text/javascript" src="webgl-utils.js"></script>
         <script type="text/javascript" src="benchmarker.js"></script>
+        <script type="text/javascript" src="webgl.js"></script>
+        <script type="text/javascript" src="shaderProgram.js"></script>
         <script type="text/javascript" src="camera.js"></script>
         <script type="text/javascript" src="keyboard.js"></script>
         <script type="text/javascript" src="square.js"></script>
@@ -451,140 +390,24 @@ TODO: get up and running...
         <script type="text/javascript" src="simplex.js"></script>
 
         <script type="text/javascript">
-            // init globals
-            var gl;
-            var t1 = new Date().getTime();
-            var objects = [];
-            var transparentObjects = [];
-            var run = true;
-            var pMatrix = mat4.create(); // perspective matrix
-            var mvMatrix = mat4.create(); // model-view matrix
-            var mvMatrixStack = []; // stack of model-view matrices
-            var cam = new Camera();
             var lightDirection = vec3.create([0.1, 0.4, 0.8]);
 
-            function init() {
-                // lesson 1 - starting
-                // lesson 2 - color
-                // lesson 3 - animation
-                // lesson 4 - 3D
-                // lesson 5 - textures
-                // lesson 6 - mip mapping textures
-                // 7 - lighting
-                // 8 - transparency
-                // 9 - many objects
-                // 10 - doom
-                // 11 - sphere + lighting + mouse
-                // 12 - light from point
-                // 13 - per pixel light from point
-                // 14 - teapot
-                // 15 - specular globe
-                // 16 - frame buffer
-
-                // STRESS TESTING:
-                // --------------
-                // i can handle 5 spheres sub divided to depth 6 before crashing (runs out of memory dividing them?)
-                // i can handle 300 cubes before performance suffers (frames per second starts to drop below 60)
-                // i can handle 300 spheres sub divided to depth 2 before performance suffers
-                // i can handle 8 65k grids before performance suffers
-                // i can do 100 divisions per vertex with two big spheres before performance suffers
-
-                // atmospheres
-                // blend together different simplex frequencies, understand zeroing it, etc
-                // voronoi noise!
-                // bump maps!
-                // tolerate jumpy frames, when properly handle movement
-
-                gl = initGl();
-
-                // init shader programs
-                var shaderProgram1 = new ShaderProgram(gl, 'shaders/shader1.vert', 'shaders/shader1.frag'); // just aVtxPos
-                shaderProgram1.setUniformLocation('uPMatrix');
-                shaderProgram1.setUniformLocation('uMvMatrix');
-                shaderProgram1.setAttribLocation('aVtxPos');
-
-                var shaderProgram2 = new ShaderProgram(gl, 'shaders/shader2.vert', 'shaders/shader2.frag'); // aVtxPos with 0.5 alpha
-                shaderProgram2.setUniformLocation('uPMatrix');
-                shaderProgram2.setUniformLocation('uMvMatrix');
-                shaderProgram2.setAttribLocation('aVtxPos');
-
-                var shaderProgram3 = new ShaderProgram(gl, 'shaders/shader3.vert', 'shaders/shader3.frag'); // aVtxPos and aVtxNor
-                shaderProgram3.setUniformLocation('uPMatrix');
-                shaderProgram3.setUniformLocation('uMvMatrix');
-                shaderProgram3.setUniformLocation('uLightDirection');
-                shaderProgram3.setAttribLocation('aVtxPos');
-                shaderProgram3.setAttribLocation('aVtxNor');
-
-                // init objects
-
-                var noise = new SimplexNoise();
-                var adjust = function (v) {
-                    //return [v[0], v[1], v[2]];
-                    var n = 600;
-                    var radius = 1 + 0.01 * noise.noises3d(2 * v[0] / n, 2 * v[1] / n, 2 * v[2] / n, 4, 0.95);
-                    return [radius * v[0], radius * v[1], radius * v[2]];
-                };
-
-                //var transparentSquare = new Square(gl, shaderProgram2, vec3.create([-0.8, 0.8, -13]));
-                //transparentObjects.push(transparentSquare);
-                //var transparentSquare2 = new Square(gl, shaderProgram2, vec3.create([0.8, -0.8, -9]));
-                //transparentObjects.push(transparentSquare2);
-
-                //var cube = new Cube(gl, shaderProgram3, vec3.create([-3, -2, -10]));
-                //objects.push(cube);
-
-                //var sphere = new Sphere(gl, shaderProgram3, vec3.create([0,-310,0]), 300, 6, adjust);
-                //objects.push(sphere);
-                //var sphere2 = new Sphere(gl, shaderProgram3, vec3.create([0,-151,-500]), 200, 4, adjust);
-                //objects.push(sphere2);
-
-                //var grid = new Grid(gl, shaderProgram3, vec3.create([0, -1, 0]), 16);
-                //objects.push(grid);
-
-                gl.clearColor(0, 0, 0, 1);
-                gl.enable(gl.DEPTH_TEST);
-                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-                document.onkeydown = handleKeyDown;
-                document.onkeyup = handleKeyUp;
-
-                tick();
-            }
-
-            function tick() {
-                var t2 = new Date().getTime();
-                if (t1) benchmarker.setFrameTime(t2 - t1);
-                t1 = new Date().getTime();
-
-                if (run)
-                    requestAnimFrame(tick);
-
-                handleKeys();
-                draw();
-            }
-
-            function draw() {
-                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-                // start model-view matrix at the origin...
-                mat4.identity(mvMatrix);
-                // ... then apply camera rotation...
-                mat4.multiply(mvMatrix, quat4.toMat4(cam.q));
-                // ... then camera translation...
-                mat4.translate(mvMatrix, cam.p);
-
-                // opaque objects
-                gl.disable(gl.BLEND);
-                for (var i = 0; i < objects.length; i++) {
-                    objects[i].draw(cam);
-                }
-
-                // transparent objects
-                gl.enable(gl.BLEND);
-                for (i = 0; i < transparentObjects.length; i++) { // TODO: order back to front
-                    transparentObjects[i].draw(cam);
-                }
-            }
-
+            //    // lesson 1 - starting
+            //    // lesson 2 - color
+            //    // lesson 3 - animation
+            //    // lesson 4 - 3D
+            //    // lesson 5 - textures
+            //    // lesson 6 - mip mapping textures
+            //    // 7 - lighting
+            //    // 8 - transparency
+            //    // 9 - many objects
+            //    // 10 - doom
+            //    // 11 - sphere + lighting + mouse
+            //    // 12 - light from point
+            //    // 13 - per pixel light from point
+            //    // 14 - teapot
+            //    // 15 - specular globe
+            //    // 16 - frame buffer
         </script>
 
         <style type="text/css">
@@ -595,15 +418,16 @@ TODO: get up and running...
         </style>
     </head>
 
-    <body onload="init();">
+    <body>
 
         <canvas id="canvas" width="1200" height="400"></canvas>
 
         <div id="benchmarker"></div>
 
         <script type="text/javascript">
-            var benchmarker = new Benchmarker($('#benchmarker'));
-            benchmarker.createBins(10);
+            var canvas = document.getElementById('canvas');
+            var $benchmarker = $('#benchmarker');
+            webgl.common.init(canvas, $benchmarker);
         </script>
 
     </body>
@@ -785,6 +609,8 @@ b],f.body["scroll"+b],f.documentElement["scroll"+b],f.body["offset"+b],f.documen
 // ====
 // C:\inetpub\wwwroot\WebGL\code\keyboard.js
 // ----
+var webgl = webgl || {};
+
 var currentlyPressedKeys = {};
 var keyboard = {};
 keyboard.scale = 0.5;
@@ -809,25 +635,25 @@ function handleKeys() {
     // command = 224
     // w = 87, a = 65,s = 83,d = 68
     if (currentlyPressedKeys[38]) {
-        if (currentlyPressedKeys[16]) cam.fly(keyboard.scale * 1);
-        else cam.advance(keyboard.scale * 1);
+        if (currentlyPressedKeys[16]) webgl.common.cam.fly(keyboard.scale * 1);
+        else webgl.common.cam.advance(keyboard.scale * 1);
     }
     if (currentlyPressedKeys[40]) {
-        if (currentlyPressedKeys[16]) cam.fly(keyboard.scale * -1);
-        else cam.advance(keyboard.scale * -1);
+        if (currentlyPressedKeys[16]) webgl.common.cam.fly(keyboard.scale * -1);
+        else webgl.common.cam.advance(keyboard.scale * -1);
     }
     if (currentlyPressedKeys[37]) {
-        if (currentlyPressedKeys[16]) cam.strafe(keyboard.scale * -1);
-        else cam.yaw(keyboard.scale * 0.03);
+        if (currentlyPressedKeys[16]) webgl.common.cam.strafe(keyboard.scale * -1);
+        else webgl.common.cam.yaw(keyboard.scale * 0.03);
     }
     if (currentlyPressedKeys[39]) {
-        if (currentlyPressedKeys[16]) cam.strafe(keyboard.scale * 1);
-        else cam.yaw(keyboard.scale * -0.03);
+        if (currentlyPressedKeys[16]) webgl.common.cam.strafe(keyboard.scale * 1);
+        else webgl.common.cam.yaw(keyboard.scale * -0.03);
     }
-    if (currentlyPressedKeys[87]) cam.pitch(keyboard.scale * 0.03);
-    if (currentlyPressedKeys[83]) cam.pitch(keyboard.scale * -0.03);
-    if (currentlyPressedKeys[65]) cam.bank(keyboard.scale * 0.03);
-    if (currentlyPressedKeys[68]) cam.bank(keyboard.scale * -0.03);
+    if (currentlyPressedKeys[87]) webgl.common.cam.pitch(keyboard.scale * 0.03);
+    if (currentlyPressedKeys[83]) webgl.common.cam.pitch(keyboard.scale * -0.03);
+    if (currentlyPressedKeys[65]) webgl.common.cam.bank(keyboard.scale * 0.03);
+    if (currentlyPressedKeys[68]) webgl.common.cam.bank(keyboard.scale * -0.03);
 }
 
 
@@ -839,10 +665,7 @@ function ShaderProgram(gl, vShaderPath, fShaderPath) {
     var vShaderScript = getSourceSync(vShaderPath);
     var fShaderScript = getSourceSync(fShaderPath);
 
-    var vShader = getVShader(gl, vShaderScript);
-    var fShader = getFShader(gl, fShaderScript);
-
-    var program = initShaders(vShader, fShader);
+    var program = initShaders(getVShader(vShaderScript), getFShader(fShaderScript));
 
     program.setAttribLocation = function(name) {
         this[name] = gl.getAttribLocation(this, name);
@@ -852,45 +675,31 @@ function ShaderProgram(gl, vShaderPath, fShaderPath) {
         this[name] = gl.getUniformLocation(this, name);
     };
 
-    /*
-        program.setNMatrix = function() {
-            // simple normals
-            var nMatrix = mat3.create();
-            mat3.identity(nMatrix);
-            gl.uniformMatrix3fv(this.uNMatrix, false, nMatrix);
-            
-            // apparently, the following should be correct, but isn't...
-            //var normalMatrix = mat3.create();
-            //mat4.toInverseMat3(mvMatrix, normalMatrix);
-            //mat3.transpose(normalMatrix);
-            //gl.uniformMatrix3fv(shaderProgram.nMatrixUniform, false, normalMatrix);    
-        }
-        */
     return program;
 
     // helper functions
     // ----------------
 
     function getSourceSync(url) {
-        var req = new XMLHttpRequest();
+        var req = new window.XMLHttpRequest();
         req.open('GET', url + '?t=' + new Date(), false); // prevent caching
         req.send(null);
         return (req.status == 200 || req.status == 304) ? req.responseText : null;
     }
 
-    function getVShader(gl, shaderScript) {
+    function getVShader(shaderScript) {
         if (!shaderScript) return null;
         var shader = gl.createShader(gl.VERTEX_SHADER);
-        return getShader(gl, shader, shaderScript);
+        return getShader(shader, shaderScript);
     }
 
-    function getFShader(gl, shaderScript) {
+    function getFShader(shaderScript) {
         if (!shaderScript) return null;
         var shader = gl.createShader(gl.FRAGMENT_SHADER);
-        return getShader(gl, shader, shaderScript);
+        return getShader(shader, shaderScript);
     }
 
-    function getShader(gl, shader, shaderScript) {
+    function getShader(shader, shaderScript) {
         if (!shader || !shaderScript) return null;
         gl.shaderSource(shader, shaderScript);
         gl.compileShader(shader);
@@ -902,7 +711,8 @@ function ShaderProgram(gl, vShaderPath, fShaderPath) {
     }
 
     function initShaders(vShader, fShader) {
-        if (!vShader || !fShader) throw 'vShader and fShader must not be null';
+        if (!vShader || !fShader)
+            throw 'vShader and fShader must not be null';
 
         var shaderProgram = gl.createProgram();
 
@@ -911,7 +721,8 @@ function ShaderProgram(gl, vShaderPath, fShaderPath) {
 
         gl.linkProgram(shaderProgram);
 
-        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) throw 'Could not initialise shaders';
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS))
+            throw 'Could not initialise shaders';
 
         return shaderProgram;
     }
@@ -1324,10 +1135,10 @@ function Sphere(gl, sp, p, radius, subDivisionDepth, adjust) {
     this.draw = function(cam) { // camera
         gl.useProgram(sp);
 
-        pushMvMatrix();
+        webgl.common.pushMvMatrix();
 
-        mat4.translate(mvMatrix, p); // translation by p
-        //mat4.multiply(mvMatrix, q); // rotation by q
+        mat4.translate(webgl.common.mvMatrix, p); // translation by p
+        //mat4.multiply(webgl.common.mvMatrix, q); // rotation by q
 
         gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
         gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
@@ -1335,14 +1146,14 @@ function Sphere(gl, sp, p, radius, subDivisionDepth, adjust) {
         gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBuf);
         gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
 
-        gl.uniformMatrix4fv(sp['uPMatrix'], false, pMatrix);
-        gl.uniformMatrix4fv(sp['uMvMatrix'], false, mvMatrix);
+        gl.uniformMatrix4fv(sp['uPMatrix'], false, webgl.common.pMatrix);
+        gl.uniformMatrix4fv(sp['uMvMatrix'], false, webgl.common.mvMatrix);
         gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBuf);
         gl.drawElements(gl.TRIANGLES, vtxInd.length, gl.UNSIGNED_SHORT, 0);
 
-        popMvMatrix();
+        webgl.common.popMvMatrix();
     };
 }
 
@@ -1374,18 +1185,18 @@ function Square(gl, sp, p) { // gl, shaderProgram, position
     this.draw = function(cam) { // camera
         gl.useProgram(sp);
 
-        pushMvMatrix();
+        webgl.common.pushMvMatrix();
 
-        mat4.translate(mvMatrix, p); // translation by p
-        //mat4.multiply(mvMatrix, q); // rotation by q
+        mat4.translate(webgl.common.mvMatrix, p); // translation by p
+        //mat4.multiply(webgl.common.mvMatrix, q); // rotation by q
 
         gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBuf);
         gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
-        gl.uniformMatrix4fv(sp['uPMatrix'], false, pMatrix);
-        gl.uniformMatrix4fv(sp['uMvMatrix'], false, mvMatrix);
+        gl.uniformMatrix4fv(sp['uPMatrix'], false, webgl.common.pMatrix);
+        gl.uniformMatrix4fv(sp['uMvMatrix'], false, webgl.common.mvMatrix);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, vtxPos.length / 3);
 
-        popMvMatrix();
+        webgl.common.popMvMatrix();
     };
 }
 
@@ -1568,5 +1379,162 @@ window.requestAnimFrame = (function () {
              window.setTimeout(callback, 1);
          };
 })();
+
+
+// ====
+// C:\inetpub\wwwroot\WebGL\code\webgl.js
+// ----
+var webgl = webgl || {};
+
+// note: can push some uniforms to GPU once per shader program, e.g. pMatrix, lightDirection, etc
+
+webgl.common = (function () {
+    var self = {};
+
+// ReSharper disable InconsistentNaming
+    var _viewportWidth = null;
+    var _viewportHeight = null;
+    var _t1 = new Date().getTime();
+    var _benchmarker = null;
+    var _mvMatrixStack = []; // stack of model-view matrices
+
+    var _shaderProgram2d = null;
+    var _shaderProgram3d = null;
+// ReSharper restore InconsistentNaming
+
+    self.gl = null;
+    self.cam = null;
+    self.objects = [];
+    self.transparentObjects = [];
+    self.pMatrix = mat4.create(); // perspective matrix
+    self.mvMatrix = mat4.create(); // model-view matrix
+
+    self.init = function (canvas, $benchmarker) {
+        try {
+            self.gl = canvas.getContext('experimental-webgl');
+            _viewportWidth = canvas.width;
+            _viewportHeight = canvas.height;
+        } catch(e) {
+        }
+
+        if (!self.gl) {
+            window.alert('Could not initialise WebGL');
+            throw 'Could not initialise WebGL';
+        }
+
+        self.gl.viewport(0, 0, _viewportWidth, _viewportHeight);
+        self.gl.clearColor(0, 0, 0, 1);
+        self.gl.enable(self.gl.DEPTH_TEST);
+        self.gl.blendFunc(self.gl.SRC_ALPHA, self.gl.ONE_MINUS_SRC_ALPHA);
+        mat4.perspective(45, _viewportWidth / _viewportHeight, 0.1, 10000, self.pMatrix);
+        window.document.onkeydown = handleKeyDown;
+        window.document.onkeyup = handleKeyUp;
+
+        self.cam = new Camera();
+
+        initBenchmarker($benchmarker);
+        initShaderPrograms();
+        initObjects();
+
+        self.tick();
+    };
+
+    self.pushMvMatrix = function() {
+        var copy = mat4.create();
+        mat4.set(self.mvMatrix, copy);
+        _mvMatrixStack.push(copy);
+    };
+
+    self.popMvMatrix = function() {
+        if (_mvMatrixStack.length == 0)
+            throw 'No matrices on stack to pop';
+
+        self.mvMatrix = _mvMatrixStack.pop();
+    };
+
+    self.tick = function () {
+        var t2 = new Date().getTime();
+        if (_t1 && _benchmarker)
+            _benchmarker.setFrameTime(t2 - _t1);
+        _t1 = new Date().getTime();
+
+        if (_benchmarker && _benchmarker.run)
+            requestAnimFrame(self.tick);
+
+        handleKeys();
+        draw();
+    };
+
+    function initBenchmarker($benchmarker) {
+        _benchmarker = new Benchmarker($benchmarker);
+        _benchmarker.createBins(10);
+    }
+
+    function draw() {
+        self.gl.clear(self.gl.COLOR_BUFFER_BIT | self.gl.DEPTH_BUFFER_BIT);
+
+        // start model-view matrix at the origin...
+        mat4.identity(self.mvMatrix);
+        // ... then apply camera rotation...
+        mat4.multiply(self.mvMatrix, quat4.toMat4(self.cam.q));
+        // ... then camera translation...
+        mat4.translate(self.mvMatrix, self.cam.p);
+
+        // opaque objects
+        self.gl.disable(self.gl.BLEND);
+        for (var i = 0; i < self.objects.length; i++) {
+            self.objects[i].draw(self.cam);
+        }
+
+        // transparent objects
+        self.gl.enable(self.gl.BLEND);
+        for (i = 0; i < self.transparentObjects.length; i++) { // TODO: order back to front
+            self.transparentObjects[i].draw(self.cam);
+        }
+    }
+
+    function initShaderPrograms() {
+        _shaderProgram2d = new ShaderProgram(self.gl, 'shaders/shader2d.vert', 'shaders/shader2d.frag'); // aVtxPos and aVtxNor
+        _shaderProgram2d.setUniformLocation('uPMatrix');
+        _shaderProgram2d.setUniformLocation('uMvMatrix');
+        _shaderProgram2d.setAttribLocation('aVtxPos');
+
+        _shaderProgram3d = new ShaderProgram(self.gl, 'shaders/shader3d.vert', 'shaders/shader3d.frag'); // aVtxPos and aVtxNor
+        _shaderProgram3d.setUniformLocation('uPMatrix');
+        _shaderProgram3d.setUniformLocation('uMvMatrix');
+        _shaderProgram3d.setUniformLocation('uLightDirection');
+        _shaderProgram3d.setAttribLocation('aVtxPos');
+        _shaderProgram3d.setAttribLocation('aVtxNor');
+    }
+
+    function initObjects() {
+        var cube = new Cube(self.gl, _shaderProgram3d, vec3.create([-3, -2, -10]));
+        self.objects.push(cube);
+
+        var transparentSquare = new Square(self.gl, _shaderProgram2d, vec3.create([-0.8, 0.8, -13]));
+        self.transparentObjects.push(transparentSquare);
+        var transparentSquare2 = new Square(self.gl, _shaderProgram2d, vec3.create([0.8, -0.8, -9]));
+        self.transparentObjects.push(transparentSquare2);
+
+        var noise = new SimplexNoise();
+        var adjust = function(v) {
+            //return [v[0], v[1], v[2]];
+            var n = 600;
+            var radius = 1 + 0.01 * noise.noises3d(2 * v[0] / n, 2 * v[1] / n, 2 * v[2] / n, 4, 0.95);
+            return [radius * v[0], radius * v[1], radius * v[2]];
+        };
+
+        var sphere = new Sphere(self.gl, _shaderProgram3d, vec3.create([0,-310,0]), 300, 6, adjust);
+        self.objects.push(sphere);
+        var sphere2 = new Sphere(self.gl, _shaderProgram3d, vec3.create([0, -151, -500]), 200, 4, adjust);
+        self.objects.push(sphere2);
+
+        var grid = new Grid(self.gl, _shaderProgram3d, vec3.create([0, -1, 0]), 16);
+        self.objects.push(grid);
+    }
+
+    return self;
+}());
+
 
 
