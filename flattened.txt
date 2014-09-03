@@ -673,6 +673,33 @@ function Node(index, heightmap, terrain) {
 
     var splitOrMerge = { SPLIT: 1, NONE: 0, MERGE: -1 };
 
+    function getCentre() {
+        var centre;
+        if (index == 1)
+            centre = vec3.create([32, 0, 32]);
+        else if (index == 2)
+            centre = vec3.create([192, 0, 64]);
+        else if (index == 3)
+            centre = vec3.create([64, 0, 192]);
+        else if (index == 4)
+            centre = vec3.create([192, 0, 192]);
+        else
+            throw new 'Unknown index!';
+        return vec3.add(centre, terrain.getP(), []);
+    };
+
+    function getSize() {
+        return 64;
+    };
+
+    function getBufferIndex() {
+        return '' + 0;
+    };
+
+    function isFrustumCulled(cam) {
+        return false;
+    }
+
     var _centre = getCentre();
     var _size = getSize();
     var _bufferIndex = getBufferIndex();
@@ -696,30 +723,6 @@ function Node(index, heightmap, terrain) {
         }
     };
 
-    function getCentre() {
-        if (index == 1)
-            return vec3.create([32, 0, 32]);
-        else if (index == 2)
-            return vec3.create([192, 0, 64]);
-        else if (index == 3)
-            return vec3.create([64, 0, 192]);
-        else if (index == 4)
-            return vec3.create([192, 0, 192]);
-        else
-            throw new 'Unknown index!';
-    };
-
-    function getSize() {
-        return 64;
-    };
-
-    function getBufferIndex() {
-        return '' + 0;
-    };
-
-    function isFrustumCulled(cam) {
-        return false;
-    }
 
     self.getSplitOrMerge = function (cam) {
         // check whether processed, if so, return _splitOrMerge, else calculate, store result in _splitOrMerge, flag as processed, and return value
@@ -738,7 +741,9 @@ function Node(index, heightmap, terrain) {
     function merge(cam) {
         var siblingIndexes = getSiblingIndexes();
         var allSiblingsMerge = true;
-        siblingIndexes.forEach(function(i) {
+        siblingIndexes.forEach(function (i) {
+            if (!('' + i in terrain.nodes))
+                throw 'sibling index is not stored'; // does this ever happen?
             var sibling = terrain.nodes['' + i];
             if (!sibling)
                 throw 'sibling is null'; // does this ever happen?
@@ -760,6 +765,8 @@ function Node(index, heightmap, terrain) {
         var neighbourIndexes = getNeighbourIndexes();
         var neighbourSplits = [];
         neighbourIndexes.forEach(function (i) {
+            if (!('' + i in terrain.nodes))
+                throw 'neighbour index is not stored'; // does this ever happen?
             var neighbour = terrain.nodes['' + i];
             if (!neighbour)
                 throw 'neighbour is null'; // does this ever happen?
@@ -3065,7 +3072,11 @@ function Square(gl, sp, p) { // gl, shaderProgram, position
 // ----
 function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightmap
     var self = {};
-    
+
+    var isWireFrame = true;
+
+    self.getP = function () { return p; };
+
     // note: generalize this for higher LOD buffers, also spheres and noise
     var vtxPos = [];
     var vtxNor = [];
@@ -3096,7 +3107,7 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     self.nodes['3'] = new Node(3, heightmap, self);
     self.nodes['4'] = new Node(4, heightmap, self);
 
-    self.indexes = [];
+    self.processed = [];
 
     if (gl) {
         vtxPosBufs['0'] = gl.createBuffer();
@@ -3129,15 +3140,30 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         gl.uniformMatrix4fv(sp['uMvMatrix'], false, webgl.common.mvMatrix);
         gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
 
-        self.indexes = [];
+        var indexes = [];
         for (var index in self.nodes) {
-            Array.prototype.push.apply(self.indexes, self.nodes[index].draw(cam));
+            self.nodes[index].draw(cam);
+            Array.prototype.push.apply(indexes, self.nodes[index].draw(cam));
         }
-        //console.log(self.indexes);
+        //console.log(indexes);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBufs['0']);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(self.indexes), gl.STATIC_DRAW);
-        gl.drawElements(gl.TRIANGLES, self.indexes.length, gl.UNSIGNED_SHORT, 0);
+        if (!isWireFrame) {
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexes), gl.STATIC_DRAW);
+            gl.drawElements(gl.TRIANGLES, indexes.length, gl.UNSIGNED_SHORT, 0);
+        } else {
+            var wireFrameIndexes = [];
+            for (var j = 0; j < indexes.length; j += 3) {
+                wireFrameIndexes.push(indexes[j]);
+                wireFrameIndexes.push(indexes[j + 1]);
+                wireFrameIndexes.push(indexes[j]);
+                wireFrameIndexes.push(indexes[j + 2]);
+                wireFrameIndexes.push(indexes[j + 1]);
+                wireFrameIndexes.push(indexes[j + 2]);
+            }
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(wireFrameIndexes), gl.STATIC_DRAW);
+            gl.drawElements(gl.LINES, wireFrameIndexes.length, gl.UNSIGNED_SHORT, 0);
+        }
 
         webgl.common.popMvMatrix();
     };
@@ -3159,6 +3185,7 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 
     <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
     <script type="text/javascript" src="camera.js"></script>
+    <script type="text/javascript" src="node.js"></script>
 
     <script type="text/javascript">
         $(function () {
@@ -3293,6 +3320,16 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
                 // construct 10^6 arrays and push two in 45 (three in 50... one in 185!) ms
                 // extend 10^6 arrays via iteration in 494 ms
                 // extend 10^6 arrays via push.apply in 304 ms
+            });
+
+            test('node', function () {
+                var cam = new Camera();
+                var terrain = {
+                    getP: function () { return [0, 0, 0]; }
+                };
+                var node = new Node(1, null, terrain);
+                var splitOrMerge = node.getSplitOrMerge(cam);
+                equal(splitOrMerge, 0, 'first node test');
             });
 
         });
