@@ -708,15 +708,14 @@ function Node(index, heightmap, terrain) {
             return [];
 
         _splitOrMerge = self.getSplitOrMerge(cam);
-        //console.log('index:' + index + ' ~ ' + _splitOrMerge);
 
         if (_splitOrMerge === Node.splitOrMerge.SPLIT) {
             split(); // note: this will add children to (and remove the current node from) the store...
-            return draw(cam); // ... but the children won't be drawn in this frame, so draw the current node one last time
+            return draw(cam, [true, true, true, true]); // ... but the children won't be drawn in this frame, so draw the current node one last time
         } else if (_splitOrMerge === Node.splitOrMerge.MERGE) {
             var merged = merge(cam);
             if (merged) // note: if all siblings want to merge, we'll remove them and add the parent...
-                return terrain.nodes[4].draw(cam); // ... but the parent won't be looped over, so manually draw it
+                return terrain.nodes[Node.getParentIndex(index)].draw(cam); // ... but the parent won't be looped over, so manually draw it
             else
                 return draw(cam); // if any sibling doesn't want to merge, we need to draw each sibling separately
         } else {
@@ -734,10 +733,11 @@ function Node(index, heightmap, terrain) {
         var distSq = vec3.dot(centreToCam, centreToCam); // don't waste time square-rooting
         var sizeSq = _size * _size;
         _splitOrMerge = Node.splitOrMerge.NONE;
-        if (distSq < sizeSq * Node.splitScaling && Node.getLevel(index) < 2)
-            _splitOrMerge = Node.splitOrMerge.SPLIT;
-        else if (distSq > 2 * sizeSq * Node.splitScaling)
+        if (distSq < sizeSq * Node.splitScaling) {
+            _splitOrMerge = Node.getLevel(index) < 6 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
+        } else if (distSq > 2 * sizeSq * Node.splitScaling) {
             _splitOrMerge = Node.splitOrMerge.MERGE;
+        }
         // ... flag as processed...
         terrain.processed.push(index);
         // ... and return value
@@ -757,6 +757,8 @@ function Node(index, heightmap, terrain) {
         var siblingIndexes = Node.getSiblingIndexes(index);
         var allSiblingsMerge = true;
         siblingIndexes.every(function (i) {
+            if (i === index)
+                return true; // note: siblings includes self
             if (!(i in terrain.nodes))
                 throw 'sibling index is not stored'; // does this ever happen?
             var sibling = terrain.nodes['' + i];
@@ -770,7 +772,7 @@ function Node(index, heightmap, terrain) {
         });
         if (!allSiblingsMerge)
             return false;
-        var parentIndex = getParentIndex();
+        var parentIndex = Node.getParentIndex(index);
         terrain.nodes['' + parentIndex] = new Node(parentIndex, heightmap, terrain); // with _splitOrMerge set to NONE?
         siblingIndexes.forEach(function(i) {
             delete terrain.nodes['' + i];
@@ -778,25 +780,25 @@ function Node(index, heightmap, terrain) {
         return true;
     }
 
-    function draw(cam) {
-        var neighbourIndexes = Node.getNeighbourIndexes(index);
-        var neighbourSplits = [];
-        neighbourIndexes.forEach(function(i) {
-            if (!(i in terrain.nodes)) {
-                neighbourSplits.push(false); // if neighbour not stored, can't be split / must be merged (TODO: check always true)
-            } else {
-                var neighbour = terrain.nodes[i];
-                if (!neighbour)
-                    throw 'neighbour is null'; // does this ever happen?
-                neighbourSplits.push(neighbour.getSplitOrMerge(cam) === Node.splitOrMerge.SPLIT);
-            }
-        });
+    function draw(cam, neighbourSplits) {
+        // note: allow neighbourSplits to be passed in, because when a node is split, its children won't initially draw themselves
+        // so, on that last frame, specify that all neighbours are split
+        if (!neighbourSplits) {
+            neighbourSplits = [];
+            var neighbourIndexes = Node.getNeighbourIndexes(index);
+            neighbourIndexes.forEach(function(i) {
+                if (!(i in terrain.nodes)) {
+                    neighbourSplits.push(false); // if neighbour not stored, can't be split / must be merged (TODO: check always true)
+                } else {
+                    var neighbour = terrain.nodes[i];
+                    if (!neighbour)
+                        throw 'neighbour is null'; // does this ever happen?
+                    neighbourSplits.push(neighbour.getSplitOrMerge(cam) === Node.splitOrMerge.SPLIT);
+                }
+            });
+        }
         var indexes = Node.getIndexes(index, neighbourSplits);
         return indexes;
-    }
-
-    function getParentIndex() {
-        throw 'no parent found';
     }
 
     return self;
@@ -838,6 +840,18 @@ Node.getChildIndexes = function (index, level) {
     return [firstChildIndex, firstChildIndex + 1, firstChildIndex + childSide, firstChildIndex + childSide + 1];
 };
 
+Node.getParentIndex = function (index) {
+    var level = Node.getLevel(index);
+    var xy = Node.getXY(index, level);
+    var parentSide = Math.pow(2, level - 1);
+    return Node.getFirstIndexOfLevel(level - 1) + Math.floor(xy.x * parentSide) + Math.floor(xy.y * parentSide) * parentSide;
+};
+
+Node.getSiblingIndexes = function (index) { // note: siblings includes self
+    var parentIndex = Node.getParentIndex(index);
+    return Node.getChildIndexes(parentIndex);
+};
+
 Node.getNeighbourIndexes = function (index) { // convention is N, S, E, W
     var level = Node.getLevel(index);
     var firstIndexOfLevel = Node.getFirstIndexOfLevel(level);
@@ -875,19 +889,6 @@ Node.getNeighbourIndexes = function (index) { // convention is N, S, E, W
     return neighbourIndexes;
 };
 
-Node.getSiblingIndexes = function(index) {
-    if (index === 1)
-        return [2, 3, 4];
-    else if (index === 2)
-        return [1, 3, 4];
-    else if (index === 3)
-        return [1, 2, 4];
-    else if (index === 4)
-        return [1, 2, 3];
-    else
-        throw 'Unknown index!!!';
-};
-
 Node.getIndexes = function (index, neighbourSplits) {
     var level = Node.getLevel(index);
     var xy = Node.getXY(index, level);
@@ -901,7 +902,7 @@ Node.getIndexes = function (index, neighbourSplits) {
     var seIndex = 129 * 128 * (xy.y + 2 * centreOffset) + 128 * (xy.x + 2 * centreOffset);
     // north...
     if (neighbourSplits[Node.neighbour.NORTH]) {
-        var nIndex = nwIndex + neIndex / 2;
+        var nIndex = (nwIndex + neIndex) / 2;
         indexes.push(centreIndex, nwIndex, nIndex, centreIndex, nIndex, neIndex);
     } else {
         indexes.push(centreIndex, nwIndex, neIndex);
@@ -909,7 +910,7 @@ Node.getIndexes = function (index, neighbourSplits) {
 
     // east...
     if (neighbourSplits[Node.neighbour.EAST]) {
-        var eIndex = neIndex + seIndex / 2;
+        var eIndex = (neIndex + seIndex) / 2;
         indexes.push(centreIndex, neIndex, eIndex, centreIndex, eIndex, seIndex);
     } else {
         indexes.push(centreIndex, neIndex, seIndex);
@@ -917,7 +918,7 @@ Node.getIndexes = function (index, neighbourSplits) {
 
     // south...
     if (neighbourSplits[Node.neighbour.SOUTH]) {
-        var sIndex = swIndex + seIndex / 2;
+        var sIndex = (swIndex + seIndex) / 2;
         indexes.push(centreIndex, seIndex, sIndex, centreIndex, sIndex, swIndex);
     } else {
         indexes.push(centreIndex, seIndex, swIndex);
@@ -925,7 +926,7 @@ Node.getIndexes = function (index, neighbourSplits) {
 
     // west...
     if (neighbourSplits[Node.neighbour.WEST]) {
-        var wIndex = nwIndex + swIndex / 2;
+        var wIndex = (nwIndex + swIndex) / 2;
         indexes.push(centreIndex, swIndex, wIndex, centreIndex, wIndex, nwIndex);
     } else {
         indexes.push(centreIndex, swIndex, nwIndex);
@@ -3194,7 +3195,7 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     for (var i = 0; i < 129 * 129; i++) {
         var x = i % 129;
         var y = 0;
-        var z = Math.floor(i / 129);
+        var z = -Math.floor(i / 129);
         vtxPos.push(x);
         vtxPos.push(y);
         vtxPos.push(z);
@@ -3261,11 +3262,13 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 
         var indexes = self.getIndexes(cam);
         //console.log(indexes);
-        //indexes.forEach(function(ii) {
-        //    if (ii < 0 || ii > vtxPos.length / 3)
-        //        console.log(ii);
-        //});
-
+        if (false) {
+            indexes.forEach(function(ii) {
+                if (ii < 0 || ii > vtxPos.length / 3)
+                    throw 'Invalid index: ' + ii;
+            });
+        }
+        
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBufs[0]);
         if (!isWireFrame) {
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexes), gl.STATIC_DRAW);
@@ -3504,6 +3507,19 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
                 deepEqual(Node.getChildIndexes(5), [21, 22, 29, 30]);
             });
 
+            test('Node.getParentIndex', function () {
+                deepEqual(Node.getParentIndex(1), 0);
+                deepEqual(Node.getParentIndex(5), 1);
+                deepEqual(Node.getParentIndex(6), 1);
+                deepEqual(Node.getParentIndex(8), 2);
+                deepEqual(Node.getParentIndex(17), 3);
+                deepEqual(Node.getParentIndex(20), 4);
+            });
+
+            test('Node.getSiblingIndexes', function () {
+                deepEqual(Node.getSiblingIndexes(1), [1, 2, 3, 4]);
+            });
+
             test('Node.getNeighbourIndexes', function () {
                 deepEqual(Node.getNeighbourIndexes(0), [0, 0, 0, 0]);
                 deepEqual(Node.getNeighbourIndexes(1), [2, 3, 2, 3]);
@@ -3533,10 +3549,15 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
             test('Node.getIndexes', function () {
                 deepEqual(Node.getIndexes(1, [false, false, false, false]), [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0]);
                 deepEqual(Node.getIndexes(2, [false, false, false, false]), [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64]);
-                //deepEqual(Node.getIndexes(3, [false, false, false, false]), [12416, 8256, 8320]);
-                //deepEqual(Node.getIndexes(4, [false, false, false, false]), [12480, 8320, 8384]);
+                deepEqual(Node.getIndexes(3, [false, false, false, false]), [12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256]);
+                deepEqual(Node.getIndexes(4, [false, false, false, false]), [12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]);
 
                 deepEqual(Node.getIndexes(5, [false, false, false, false]), [2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0]);
+
+                deepEqual(Node.getIndexes(1, [true, false, false, false]), [4160, 0, 32, 4160, 32, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0]);
+                deepEqual(Node.getIndexes(1, [false, true, false, false]), [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 0]);
+                deepEqual(Node.getIndexes(1, [false, false, true, false]), [4160, 0, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0]);
+                deepEqual(Node.getIndexes(1, [false, false, false, true]), [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 4128, 4160, 4128, 0]);
             });
 
             test('Node.getSize', function () {
@@ -3567,10 +3588,13 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 
             test('terrain', function () {
                 var cam = new Camera();
-                var terrain = new Terrain(null, null, vec3.create([0, 0, 0]), null);
+                var terrain = new Terrain(null, null, vec3.create([0, -1, 0]), null);
                 var indexes = terrain.getIndexes(cam);
+                //console.log(terrain.nodes);
+                console.log(indexes);
+                //deepEqual(indexes, [4160, 0, 32, 4160, 32, 64, 4160, 64, 4224, 4160, 4224, 8320, 4160, 8320, 12416, 4160, 12416, 8256, 4160, 8256, 4128, 4160, 4128, 0, 4224, 64, 128, 4224, 128, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 4224, 4224, 4224, 64, 12416, 8256, 12416, 12416, 12416, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 16512, 12416, 16512, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]);
                 //deepEqual(indexes, [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0, 4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]);
-                deepEqual(terrain.processed, [1, 2, 3, 4]);
+                deepEqual(terrain.processed, [1, 2, 4, 3]);
                 //console.log(terrain.nodes);
                 var indexes = terrain.getIndexes(cam);
                 //deepEqual(terrain.processed, [1, 2, 3, 4, 5, 6, 9, 10]);
@@ -3579,6 +3603,8 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
                 //deepEqual(terrain.processed, [1, 2, 3, 4, 5, 6, 9, 10]);
                 //deepEqual(indexes, [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0, 4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]);
                 //deepEqual(indexes, [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]);
+
+                //-100, -1, -100
             });
 
         });
@@ -3929,7 +3955,8 @@ webgl.common = (function () {
         //var grid = new Grid(self.gl, _shaderProgram3d, vec3.create([0, -1, 0]), 16);
         //self.objects.push(grid);
 
-        var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([-64, -1, -128]));
+        self.cam.yaw(-Math.PI / 4);
+        var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([-0, -1, -0]));
         self.objects.push(terrain);
     }
 
