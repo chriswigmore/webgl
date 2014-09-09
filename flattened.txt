@@ -829,7 +829,7 @@ Node.splitOrMerge = { SPLIT: 1, NONE: 0, MERGE: -1, HIDE: -2 };
 
 Node.neighbour = { NORTH: 0, SOUTH: 1, EAST: 2, WEST: 3 };
 
-Node.splitScaling = 1; // scale the point at which nodes split / merge
+Node.splitScaling = 10; // scale the point at which nodes split / merge
 
 Node.getLevel = function (index) {
     return Math.floor(Math.log(3 * index + 1) / Math.log(4));
@@ -3574,7 +3574,7 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     for (var i = 0; i < 129 * 129; i++) {
         var x = i % 129;
         var y = 0;
-        var z = -Math.floor(i / 129);
+        var z = Math.floor(i / 129);
         vtxPos.push(x);
         vtxPos.push(y);
         vtxPos.push(z);
@@ -4557,8 +4557,10 @@ webgl.common = (function () {
         //var grid = new Grid(self.gl, _shaderProgram3d, vec3.create([0, -1, 0]), 16);
         //self.objects.push(grid);
 
+        self.cam.p = vec3.create([0, 0, -90]);
         //self.cam.yaw(-Math.PI / 4);
-        var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([-64, -1, 64]));
+
+        var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([-64, -1, -64]), null);
         self.objects.push(terrain);
     }
 
