@@ -404,7 +404,8 @@ function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
 <!--
 
     TODO:
-    terrain with default heightmap
+    x - terrain with default heightmap
+    terrain with many buffers
     terrain as sphere
     terrain as sphere with noise
     skydome
@@ -955,7 +956,7 @@ Node.getIndexes = function (index, neighbourSplits) {
     } else {
         indexes.push(centreIndex, swIndex, nwIndex);
     }
-    return indexes;
+    return { bufferId: 0, elementIndexes: indexes };
 };
 
 Node.getSize = function (index, level) {
@@ -3300,7 +3301,7 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     }
     
     self.getIndexes = function (cam) {
-        var indexes = [];
+        var allIndexes = {};
         //for (var j = 0; j < 129 * 128; j++) {
         //    if (j % 129 == 128)
         //        continue;
@@ -3311,9 +3312,12 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         self.processed = [];
         for (var index in _nodes) {
             var node = self.cache[index];
-            Array.prototype.push.apply(indexes, node.getIndexes(cam, _nodes));
+            var nodeIndexes = node.getIndexes(cam, _nodes); // { bufferId: 0, elementIndexes: [0,1,2,...] }
+            if (!(nodeIndexes.bufferId in allIndexes))
+                allIndexes[nodeIndexes.bufferId] = [];
+            Array.prototype.push.apply(allIndexes[nodeIndexes.bufferId], nodeIndexes.elementIndexes);
         }
-        return indexes;
+        return allIndexes;
     };
 
     self.draw = function(cam) { // camera
@@ -3328,12 +3332,6 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         gl.uniformMatrix4fv(sp['uMvMatrix'], false, webgl.common.mvMatrix);
         gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[0]);
-        gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBufs[0]);
-        gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
-
         var indexes = self.getIndexes(cam);
         if (false) {
             indexes.forEach(function(ii) {
@@ -3342,35 +3340,32 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
             });
         }
 
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBufs[0]);
-        if (!isWireFrame) {
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexes), gl.STATIC_DRAW);
-            gl.drawElements(gl.TRIANGLES, indexes.length, gl.UNSIGNED_SHORT, 0);
+        for (var bufferId in indexes) {
+            var elementIndexes = indexes[bufferId];
 
-            //for (var bb = 1; bb < 10; bb++) {
-            //    gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[bb % 10]);
-            //    gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[bufferId]);
+            gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
 
-            //    gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBufs[bb % 10]);
-            //    gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBufs[bufferId]);
+            gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
 
-            //    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBufs[bb % 10]);
-            //    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexes), gl.STATIC_DRAW);
-            //    gl.drawElements(gl.TRIANGLES, indexes.length, gl.UNSIGNED_SHORT, 0);
-            //}
-
-        } else {
-            var wireFrameIndexes = [];
-            for (var j = 0; j < indexes.length; j += 3) {
-                wireFrameIndexes.push(indexes[j]);
-                wireFrameIndexes.push(indexes[j + 1]);
-                wireFrameIndexes.push(indexes[j]);
-                wireFrameIndexes.push(indexes[j + 2]);
-                wireFrameIndexes.push(indexes[j + 1]);
-                wireFrameIndexes.push(indexes[j + 2]);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBufs[bufferId]);
+            if (!isWireFrame) {
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(elementIndexes), gl.STATIC_DRAW);
+                gl.drawElements(gl.TRIANGLES, elementIndexes.length, gl.UNSIGNED_SHORT, 0);
+            } else {
+                var wireFrameIndexes = [];
+                for (var j = 0; j < elementIndexes.length; j += 3) {
+                    wireFrameIndexes.push(elementIndexes[j]);
+                    wireFrameIndexes.push(elementIndexes[j + 1]);
+                    wireFrameIndexes.push(elementIndexes[j]);
+                    wireFrameIndexes.push(elementIndexes[j + 2]);
+                    wireFrameIndexes.push(elementIndexes[j + 1]);
+                    wireFrameIndexes.push(elementIndexes[j + 2]);
+                }
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(wireFrameIndexes), gl.STATIC_DRAW);
+                gl.drawElements(gl.LINES, wireFrameIndexes.length, gl.UNSIGNED_SHORT, 0);
             }
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(wireFrameIndexes), gl.STATIC_DRAW);
-            gl.drawElements(gl.LINES, wireFrameIndexes.length, gl.UNSIGNED_SHORT, 0);
         }
 
         webgl.common.popMvMatrix();
@@ -3639,18 +3634,18 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
                 deepEqual(Node.getNeighbourIndexes(84), [76, 77, 28, 83]);
             });
 
-            test('Node.getIndexes', function () {
-                deepEqual(Node.getIndexes(1, [false, false, false, false]), [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0]);
-                deepEqual(Node.getIndexes(2, [false, false, false, false]), [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64]);
-                deepEqual(Node.getIndexes(3, [false, false, false, false]), [12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256]);
-                deepEqual(Node.getIndexes(4, [false, false, false, false]), [12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]);
+            test('Node.getIndexes', function() {
+                deepEqual(Node.getIndexes(1, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
+                deepEqual(Node.getIndexes(2, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64] });
+                deepEqual(Node.getIndexes(3, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256] });
+                deepEqual(Node.getIndexes(4, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320] });
 
-                deepEqual(Node.getIndexes(5, [false, false, false, false]), [2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0]);
+                deepEqual(Node.getIndexes(5, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0] });
 
-                deepEqual(Node.getIndexes(1, [true, false, false, false]), [4160, 0, 32, 4160, 32, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0]);
-                deepEqual(Node.getIndexes(1, [false, true, false, false]), [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 0]);
-                deepEqual(Node.getIndexes(1, [false, false, true, false]), [4160, 0, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0]);
-                deepEqual(Node.getIndexes(1, [false, false, false, true]), [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 4128, 4160, 4128, 0]);
+                deepEqual(Node.getIndexes(1, [true, false, false, false]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 32, 4160, 32, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
+                deepEqual(Node.getIndexes(1, [false, true, false, false]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 0] });
+                deepEqual(Node.getIndexes(1, [false, false, true, false]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
+                deepEqual(Node.getIndexes(1, [false, false, false, true]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 4128, 4160, 4128, 0] });
             });
 
             test('Node.getSize', function () {
@@ -3668,23 +3663,23 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
             });
 
             function indexesType(indexes) {
-                if (indexes.equals([8320, 0, 128, 8320, 128, 16640, 8320, 16640, 16512, 8320, 16512, 0]))
+                if (indexes[0].equals([8320, 0, 128, 8320, 128, 16640, 8320, 16640, 16512, 8320, 16512, 0]))
                     return '0 unfanned';
-                else if (indexes.equals([8320, 0, 64, 8320, 64, 128, 8320, 128, 8384, 8320, 8384, 16640, 8320, 16640, 16576, 8320, 16576, 16512, 8320, 16512, 8256, 8320, 8256, 0]))
+                else if (indexes[0].equals([8320, 0, 64, 8320, 64, 128, 8320, 128, 8384, 8320, 8384, 16640, 8320, 16640, 16576, 8320, 16576, 16512, 8320, 16512, 8256, 8320, 8256, 0]))
                     return '0 fanned';
-                else if (indexes.equals([4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0, 4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]))
+                else if (indexes[0].equals([4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0, 4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]))
                     return '1,2,3,4 unfanned';
-                else if (indexes.equals([4160, 0, 32, 4160, 32, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 4128, 4160, 4128, 0, 4224, 64, 96, 4224, 96, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 4192, 4224, 4192, 64, 12416, 8256, 8288, 12416, 8288, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 12384, 12416, 12384, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]))
+                else if (indexes[0].equals([4160, 0, 32, 4160, 32, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 4128, 4160, 4128, 0, 4224, 64, 96, 4224, 96, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 4192, 4224, 4192, 64, 12416, 8256, 8288, 12416, 8288, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 12384, 12416, 12384, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320]))
                     return '1 fanned, 2,3 fanned towards 1, 4 unfanned';
-                else if (indexes.equals([4160, 0, 32, 4160, 32, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0, 4224, 64, 96, 4224, 96, 128, 4224, 128, 4256, 4224, 4256, 8384, 4224, 8384, 8352, 4224, 8352, 8320, 4224, 8320, 4192, 4224, 4192, 64, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8352, 12480, 8352, 8384, 12480, 8384, 12512, 12480, 12512, 16640, 12480, 16640, 16576, 12480, 16576, 8320]))
+                else if (indexes[0].equals([4160, 0, 32, 4160, 32, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0, 4224, 64, 96, 4224, 96, 128, 4224, 128, 4256, 4224, 4256, 8384, 4224, 8384, 8352, 4224, 8352, 8320, 4224, 8320, 4192, 4224, 4192, 64, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8352, 12480, 8352, 8384, 12480, 8384, 12512, 12480, 12512, 16640, 12480, 16640, 16576, 12480, 16576, 8320]))
                     return '2 fanned, 1,4 fanned towards 2, 3 unfanned';
-                else if (indexes.equals([4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 4128, 4160, 4128, 0, 4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12416, 8256, 8288, 12416, 8288, 8320, 12416, 8320, 12448, 12416, 12448, 16576, 12416, 16576, 16544, 12416, 16544, 16512, 12416, 16512, 12384, 12416, 12384, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16608, 12480, 16608, 16576, 12480, 16576, 12448, 12480, 12448, 8320]))
+                else if (indexes[0].equals([4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 4128, 4160, 4128, 0, 4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12416, 8256, 8288, 12416, 8288, 8320, 12416, 8320, 12448, 12416, 12448, 16576, 12416, 16576, 16544, 12416, 16544, 16512, 12416, 16512, 12384, 12416, 12384, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16608, 12480, 16608, 16576, 12480, 16576, 12448, 12480, 12448, 8320]))
                     return '3 fanned, 1,4 fanned towards 3, 2 unfanned';
-                else if (indexes.equals([4224, 64, 96, 4224, 96, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 4192, 4224, 4192, 64, 12416, 8256, 8288, 12416, 8288, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 12384, 12416, 12384, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320, 2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0, 2112, 32, 64, 2112, 64, 4192, 2112, 4192, 4160, 2112, 4160, 32, 6208, 4128, 4160, 6208, 4160, 8288, 6208, 8288, 8256, 6208, 8256, 4128, 6240, 4160, 4192, 6240, 4192, 8320, 6240, 8320, 8288, 6240, 8288, 4160]))
+                else if (indexes[0].equals([4224, 64, 96, 4224, 96, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 4192, 4224, 4192, 64, 12416, 8256, 8288, 12416, 8288, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 12384, 12416, 12384, 8256, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320, 2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0, 2112, 32, 64, 2112, 64, 4192, 2112, 4192, 4160, 2112, 4160, 32, 6208, 4128, 4160, 6208, 4160, 8288, 6208, 8288, 8256, 6208, 8256, 4128, 6240, 4160, 4192, 6240, 4192, 8320, 6240, 8320, 8288, 6240, 8288, 4160]))
                     return '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned';
-                else if (indexes.equals([4160, 0, 32, 4160, 32, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8352, 12480, 8352, 8384, 12480, 8384, 12512, 12480, 12512, 16640, 12480, 16640, 16576, 12480, 16576, 8320, 2144, 64, 96, 2144, 96, 4224, 2144, 4224, 4192, 2144, 4192, 64, 2176, 96, 128, 2176, 128, 4256, 2176, 4256, 4224, 2176, 4224, 96, 6272, 4192, 4224, 6272, 4224, 8352, 6272, 8352, 8320, 6272, 8320, 4192, 6304, 4224, 4256, 6304, 4256, 8384, 6304, 8384, 8352, 6304, 8352, 4224]))
+                else if (indexes[0].equals([4160, 0, 32, 4160, 32, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0, 12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256, 12480, 8320, 8352, 12480, 8352, 8384, 12480, 8384, 12512, 12480, 12512, 16640, 12480, 16640, 16576, 12480, 16576, 8320, 2144, 64, 96, 2144, 96, 4224, 2144, 4224, 4192, 2144, 4192, 64, 2176, 96, 128, 2176, 128, 4256, 2176, 4256, 4224, 2176, 4224, 96, 6272, 4192, 4224, 6272, 4224, 8352, 6272, 8352, 8320, 6272, 8320, 4192, 6304, 4224, 4256, 6304, 4256, 8384, 6304, 8384, 8352, 6304, 8352, 4224]))
                     return '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned';
-                else if (indexes.equals([4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 4128, 4160, 4128, 0, 4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16608, 12480, 16608, 16576, 12480, 16576, 12448, 12480, 12448, 8320, 10336, 8256, 8288, 10336, 8288, 12416, 10336, 12416, 12384, 10336, 12384, 8256, 10368, 8288, 8320, 10368, 8320, 12448, 10368, 12448, 12416, 10368, 12416, 8288, 14464, 12384, 12416, 14464, 12416, 16544, 14464, 16544, 16512, 14464, 16512, 12384, 14496, 12416, 12448, 14496, 12448, 16576, 14496, 16576, 16544, 14496, 16544, 12416]))
+                else if (indexes[0].equals([4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 4128, 4160, 4128, 0, 4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64, 12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16608, 12480, 16608, 16576, 12480, 16576, 12448, 12480, 12448, 8320, 10336, 8256, 8288, 10336, 8288, 12416, 10336, 12416, 12384, 10336, 12384, 8256, 10368, 8288, 8320, 10368, 8320, 12448, 10368, 12448, 12416, 10368, 12416, 8288, 14464, 12384, 12416, 14464, 12416, 16544, 14464, 16544, 16512, 14464, 16512, 12384, 14496, 12416, 12448, 14496, 12448, 16576, 14496, 16576, 16544, 14496, 16544, 12416]))
                     return '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned';
                 return 'unknown';
             }
@@ -3781,7 +3776,27 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
                 deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
             });
 
-            //    //console.log('----');
+            test('terrain at level 8 from "1"', function () {
+                var cam = new Camera();
+                cam.p = vec3.create([64, 0, 64]);
+                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+                var indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '0 fanned');
+                deepEqual(terrain.processed, [0]);
+                // ... second frame its children will draw themselves (3 will be fanned, siblings will be fanned towards it)...
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
+                deepEqual(terrain.processed, [1, 2, 4, 3]);
+
+                //for (var i = 0; i < 9; i++) {
+                //    indexes = terrain.getIndexes(cam);
+                //    console.log(indexes.length);
+                //}
+                //console.log(indexes.join());
+            });
+
+            //    console.log('----');
             //    console.log(indexes.join());
 
         });
