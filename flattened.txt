@@ -811,7 +811,7 @@ function Node(index, heightmap, terrain) {
         //console.log(index, distSq, sizeSq, _centre, cam.p);
         _splitOrMerge = Node.splitOrMerge.NONE;
         if (distSq < sizeSq * Node.splitScaling) {
-            _splitOrMerge = Node.getLevel(index) < 6 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
+            _splitOrMerge = Node.getLevel(index) < 7 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
         } else if (distSq > 2 * sizeSq * Node.splitScaling) {
             _splitOrMerge = Node.getLevel(index) > 0 ? Node.splitOrMerge.MERGE : Node.splitOrMerge.NONE;
         }
@@ -840,7 +840,7 @@ Node.getFirstIndexOfLevel = function (level) {
     return (Math.pow(4, level) - 1) / 3;
 };
 
-Node.getXY = function (index, level, firstIndexOfLevel) {
+Node.getXY = function (index, level, firstIndexOfLevel) { // xy of top left
     if (!level)
         level = Node.getLevel(index);
     if (!firstIndexOfLevel)
@@ -919,6 +919,17 @@ Node.getIndexes = function (index, neighbourSplits) {
     var xy = Node.getXY(index, level);
     var centreOffset = Math.pow(2, -level - 1);
 
+    var bufferIndex = 0;
+    var bufferLevel = Math.floor(level / 7);
+    if (bufferLevel > 0) {
+        // if bufferLevel > 0, need to scale xy to within its particular square, and get the particular buffer within that buffer level
+        var firstIndexOfBufferLevel = (Math.pow(16384, bufferLevel) - 1) / 16383;
+        bufferIndex = firstIndexOfBufferLevel + Math.floor(128 * xy.x) + 128 * Math.floor(128 * xy.y); // find the buffer which this xy falls into...
+        xy.x = 128 * xy.x - Math.floor(128 * xy.x); // ... then scale the xy to within this buffer
+        xy.y = 128 * xy.y - Math.floor(128 * xy.y);
+        centreOffset = Math.pow(2, 7 * bufferLevel - level - 1);
+    }
+
     var indexes = [];
     var centreIndex = 129 * 128 * (xy.y + centreOffset) + 128 * (xy.x + centreOffset);
     var nwIndex = 129 * 128 * xy.y + 128 * xy.x;
@@ -956,7 +967,7 @@ Node.getIndexes = function (index, neighbourSplits) {
     } else {
         indexes.push(centreIndex, swIndex, nwIndex);
     }
-    return { bufferId: 0, elementIndexes: indexes };
+    return { bufferIndex: bufferIndex, elementIndexes: indexes };
 };
 
 Node.getSize = function (index, level) {
@@ -3256,21 +3267,6 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 
     self.getP = function () { return p; };
 
-    // note: generalize this for higher LOD buffers, also spheres and noise
-    var vtxPos = [];
-    var vtxNor = [];
-    for (var i = 0; i < 129 * 129; i++) {
-        var x = i % 129;
-        var y = 0;
-        var z = Math.floor(i / 129);
-        vtxPos.push(x);
-        vtxPos.push(y);
-        vtxPos.push(z);
-        vtxNor.push(0);
-        vtxNor.push(0);
-        vtxNor.push(1);
-    }
-
     //function test(index) {
     //    console.log(vtxPos[index * 3], vtxPos[index * 3 + 1], vtxPos[index * 3 + 2]);
     //}
@@ -3287,36 +3283,29 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     _nodes[0] = null;
     self.cache[0] = new Node(0, heightmap, self);
 
-    if (gl) {
-        vtxPosBufs[0] = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[0]);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxPos), gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(sp['aVtxPos']);
-        vtxNorBufs[0] = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBufs[0]);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxNor), gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(sp['aVtxNor']);
-        vtxIndBufs[0] = gl.createBuffer();
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBufs[0]);
-    }
-    
     self.getIndexes = function (cam) {
         var allIndexes = {};
-        //for (var j = 0; j < 129 * 128; j++) {
-        //    if (j % 129 == 128)
-        //        continue;
-        //    indexes.push(j, j + 1, j + 129);
-        //}
-        //console.log(indexes.length); // 49152
-
         self.processed = [];
         for (var index in _nodes) {
             var node = self.cache[index];
-            var nodeIndexes = node.getIndexes(cam, _nodes); // { bufferId: 0, elementIndexes: [0,1,2,...] }
-            if (!(nodeIndexes.bufferId in allIndexes))
-                allIndexes[nodeIndexes.bufferId] = [];
-            Array.prototype.push.apply(allIndexes[nodeIndexes.bufferId], nodeIndexes.elementIndexes);
+            var nodeIndexes = node.getIndexes(cam, _nodes); // e.g. { bufferIndex: 0, elementIndexes: [0,1,2,...] }
+            
+            //console.log(index, nodeIndexes);
+
+            var bufferIndex = nodeIndexes.bufferIndex;
+            if (!(bufferIndex in allIndexes)) {
+                allIndexes[nodeIndexes.bufferIndex] = [];
+            }
+            if (!(bufferIndex in vtxPosBufs)) {
+                if (Terrain.log)
+                    console.log('create bufferSet for ' + nodeIndexes.bufferIndex);
+                self.createBufferSet(nodeIndexes.bufferIndex);
+            }
+            Array.prototype.push.apply(allIndexes[nodeIndexes.bufferIndex], nodeIndexes.elementIndexes);
         }
+        
+        //console.log(allIndexes);
+
         return allIndexes;
     };
 
@@ -3340,16 +3329,18 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
             });
         }
 
-        for (var bufferId in indexes) {
-            var elementIndexes = indexes[bufferId];
+        for (var bufferIndex in indexes) {
+            var elementIndexes = indexes[bufferIndex];
+            if (!(bufferIndex in vtxPosBufs))
+                console.log('no ' + bufferIndex);
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[bufferId]);
+            gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[bufferIndex]);
             gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBufs[bufferId]);
+            gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBufs[bufferIndex]);
             gl.vertexAttribPointer(sp['aVtxNor'], 3, gl.FLOAT, false, 0, 0);
 
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBufs[bufferId]);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vtxIndBufs[bufferIndex]);
             if (!isWireFrame) {
                 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(elementIndexes), gl.STATIC_DRAW);
                 gl.drawElements(gl.TRIANGLES, elementIndexes.length, gl.UNSIGNED_SHORT, 0);
@@ -3371,8 +3362,80 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         webgl.common.popMvMatrix();
     };
 
+    self.createBufferSet = function (bufferIndex) { // create the position, normal, and element index buffers for this buffer index
+        
+        //                              buffer level | first in level | side
+        // 0 => offset = 0,0            0              0                1
+        
+        // 1 => offset = 0,0            1              1                128
+        // 2 => offset = 1/128, 0       1              1                128
+        // 128 => offset = 127/128, 0   1              1                128
+        // 129 => 0, 1/128              1              1                128
+        // 16384 => 127/128, 127/128    1              1                128
+        
+        // 16385 => 0,0                 2              16385            16384
+        // 16386 => 1/16384,0           2              16385            16384
+
+        // buffer level = (int)log(16383 * index + 1) / log(16384)
+        // first in level...
+        // side = 128 ^ buffer level
+        // (index - first in level) % side / side
+
+        var bufferLevel = Terrain.getBufferLevel(bufferIndex);
+        var xy = Terrain.getXY(bufferIndex, bufferLevel);
+        var side = Math.pow(128, bufferLevel);
+        //console.log(xy);
+        var vtxPos = [];
+        var vtxNor = [];
+        for (var i = 0; i < 129 * 129; i++) {
+            var x = i % 129;
+            var y = 0;
+            var z = Math.floor(i / 129);
+            vtxPos.push(side * xy.x + x / side);
+            vtxPos.push(y);
+            vtxPos.push(side * xy.y + z / side);
+            vtxNor.push(0);
+            vtxNor.push(0);
+            vtxNor.push(1);
+        }
+
+        vtxPosBufs[bufferIndex] = gl ? gl.createBuffer() : null;
+        vtxNorBufs[bufferIndex] = gl ? gl.createBuffer() : null;
+        vtxIndBufs[bufferIndex] = gl ? gl.createBuffer() : null;
+        if (gl) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[bufferIndex]);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxPos), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(sp['aVtxPos']);
+            gl.bindBuffer(gl.ARRAY_BUFFER, vtxNorBufs[bufferIndex]);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxNor), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(sp['aVtxNor']);
+        }
+    };
+
     return self;
 }
+
+Terrain.getBufferLevel = function (index) {
+    return Math.floor(Math.log(16383 * index + 1) / Math.log(16384));
+};
+
+Terrain.getFirstIndexOfBufferLevel = function (level) {
+    return (Math.pow(16384, level) - 1) / 16383;
+};
+
+Terrain.getXY = function (index, level, firstIndexOfBufferLevel) { // xy of top left
+    if (!level)
+        level = Terrain.getBufferLevel(index);
+    if (!firstIndexOfBufferLevel)
+        firstIndexOfBufferLevel = Terrain.getFirstIndexOfBufferLevel(level);
+
+    var side = Math.pow(128, level);
+    var x = ((index - firstIndexOfBufferLevel) % side) / side;
+    var y = Math.floor((index - firstIndexOfBufferLevel) / side) / side;
+    return { x: x, y: y };
+};
+
+Terrain.log = false;
 
 
 // ====
@@ -3634,18 +3697,32 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
                 deepEqual(Node.getNeighbourIndexes(84), [76, 77, 28, 83]);
             });
 
-            test('Node.getIndexes', function() {
-                deepEqual(Node.getIndexes(1, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
-                deepEqual(Node.getIndexes(2, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64] });
-                deepEqual(Node.getIndexes(3, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256] });
-                deepEqual(Node.getIndexes(4, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320] });
+            test('Node.getIndexes', function () {
+                // 0th buffer
+                deepEqual(Node.getIndexes(1, [false, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
+                deepEqual(Node.getIndexes(2, [false, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64] });
+                deepEqual(Node.getIndexes(3, [false, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256] });
+                deepEqual(Node.getIndexes(4, [false, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320] });
 
-                deepEqual(Node.getIndexes(5, [false, false, false, false]), { 'bufferId': 0, 'elementIndexes': [2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0] });
+                deepEqual(Node.getIndexes(5, [false, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0] });
 
-                deepEqual(Node.getIndexes(1, [true, false, false, false]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 32, 4160, 32, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
-                deepEqual(Node.getIndexes(1, [false, true, false, false]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 0] });
-                deepEqual(Node.getIndexes(1, [false, false, true, false]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
-                deepEqual(Node.getIndexes(1, [false, false, false, true]), { 'bufferId': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 4128, 4160, 4128, 0] });
+                deepEqual(Node.getIndexes(1, [true, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [4160, 0, 32, 4160, 32, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
+                deepEqual(Node.getIndexes(1, [false, true, false, false]), { 'bufferIndex': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8288, 4160, 8288, 8256, 4160, 8256, 0] });
+                deepEqual(Node.getIndexes(1, [false, false, true, false]), { 'bufferIndex': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 4192, 4160, 4192, 8320, 4160, 8320, 8256, 4160, 8256, 0] });
+                deepEqual(Node.getIndexes(1, [false, false, false, true]), { 'bufferIndex': 0, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 4128, 4160, 4128, 0] });
+
+                deepEqual(Node.getIndexes(5, [false, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0] });
+
+                // 0th buffer too coarse, new 'buffer level' of 128 * 128 buffers, mapped to from 256 * 256 grid of nodes
+                deepEqual(Node.getIndexes(21845, [false, false, false, false]), { 'bufferIndex': 1, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] }); // top left, lands in buffer 1
+                deepEqual(Node.getIndexes(21846, [false, false, false, false]), { 'bufferIndex': 1, 'elementIndexes': [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64] }); // also lands in buffer 1, because 256 * 256 -> 128 * 128
+                deepEqual(Node.getIndexes(21847, [false, false, false, false]), { 'bufferIndex': 2, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] }); // now lands in buffer 2
+                deepEqual(Node.getIndexes(22100, [false, false, false, false]), { 'bufferIndex': 128, 'elementIndexes': [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64] }); // far right, lands in buffer 128
+                deepEqual(Node.getIndexes(22101, [false, false, false, false]), { 'bufferIndex': 1, 'elementIndexes': [12416, 8256, 8320, 12416, 8320, 16576, 12416, 16576, 16512, 12416, 16512, 8256] }); // far left, one down, lands in buffer 1 again
+                deepEqual(Node.getIndexes(22356, [false, false, false, false]), { 'bufferIndex': 128, 'elementIndexes': [12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320] }); // far right, one down, lands in buffer 128 again
+                deepEqual(Node.getIndexes(22357, [false, false, false, false]), { 'bufferIndex': 129, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] }); // far left, two down, lands in buffer 129
+                deepEqual(Node.getIndexes(87380, [false, false, false, false]), { 'bufferIndex': 16384, 'elementIndexes': [12480, 8320, 8384, 12480, 8384, 16640, 12480, 16640, 16576, 12480, 16576, 8320] }); // far right, bottom, lands in last buffer of this buffer level, 16384
+                deepEqual(Node.getIndexes(87381, [false, false, false, false]), { 'bufferIndex': 1, 'elementIndexes': [2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0] }); // finer grained top left, lands in buffer 1 again
             });
 
             test('Node.getSize', function () {
@@ -3684,97 +3761,97 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
                 return 'unknown';
             }
 
-            test('terrain far away', function () {
-                var cam = new Camera();
-                cam.p = vec3.create([999, 0, 999]);
-                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-                var indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '0 unfanned');
-            });
+            //test('terrain far away', function () {
+            //    var cam = new Camera();
+            //    cam.p = vec3.create([999, 0, 999]);
+            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+            //    var indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '0 unfanned');
+            //});
 
-            test('terrain at level 1', function () {
-                var cam = new Camera();
-                cam.p = vec3.create([90, 0, 90]); // 90^2 + 90^2 = 16200 < 16384
-                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-                var indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '0 fanned');
-                deepEqual(terrain.processed, [0]);
-                // ... then its children will draw themselves...
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '1,2,3,4 unfanned');
-                deepEqual(terrain.processed, [1, 2, 3, 4]);
-                // ... and there will be no subsequent change
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '1,2,3,4 unfanned');
-                deepEqual(terrain.processed, [1, 2, 3, 4]);
-            });
+            //test('terrain at level 1', function () {
+            //    var cam = new Camera();
+            //    cam.p = vec3.create([90, 0, 90]); // 90^2 + 90^2 = 16200 < 16384
+            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+            //    var indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '0 fanned');
+            //    deepEqual(terrain.processed, [0]);
+            //    // ... then its children will draw themselves...
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '1,2,3,4 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 3, 4]);
+            //    // ... and there will be no subsequent change
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '1,2,3,4 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 3, 4]);
+            //});
 
-            test('terrain at level 2 from "1"', function () {
-                var cam = new Camera();
-                cam.p = vec3.create([77, 0, 77]);
-                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-                var indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '0 fanned');
-                deepEqual(terrain.processed, [0]);
-                // ... second frame its children will draw themselves (1 will be fanned, siblings will be fanned towards it)...
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
-                deepEqual(terrain.processed, [1, 2, 4, 3]);
-                // ... third frame
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned');
-                deepEqual(terrain.processed, [2, 1, 4, 3, 5, 8, 9, 6, 17, 7, 10, 13, 14, 11]);
-                // ... fourth frame, no change
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned');
-                deepEqual(terrain.processed, [2, 1, 4, 3, 5, 8, 9, 6, 17, 7, 10, 13, 14, 11]);
-            });
+            //test('terrain at level 2 from "1"', function () {
+            //    var cam = new Camera();
+            //    cam.p = vec3.create([77, 0, 77]);
+            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+            //    var indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '0 fanned');
+            //    deepEqual(terrain.processed, [0]);
+            //    // ... second frame its children will draw themselves (1 will be fanned, siblings will be fanned towards it)...
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 4, 3]);
+            //    // ... third frame
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned');
+            //    deepEqual(terrain.processed, [2, 1, 4, 3, 5, 8, 9, 6, 17, 7, 10, 13, 14, 11]);
+            //    // ... fourth frame, no change
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned');
+            //    deepEqual(terrain.processed, [2, 1, 4, 3, 5, 8, 9, 6, 17, 7, 10, 13, 14, 11]);
+            //});
 
-            test('terrain at level 2 from "2"', function () {
-                var cam = new Camera();
-                cam.p = vec3.create([-77, 0, 77]);
-                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-                var indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '0 fanned');
-                deepEqual(terrain.processed, [0]);
-                // ... second frame its children will draw themselves (2 will be fanned, siblings will be fanned towards it)...
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '2 fanned, 1,4 fanned towards 2, 3 unfanned');
-                deepEqual(terrain.processed, [1, 2, 3, 4]);
-                // ... third frame
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned');
-                deepEqual(terrain.processed, [1, 2, 3, 4, 7, 8, 6, 11, 5, 12, 20, 15, 10, 16]);
-                // ... fourth frame, no change
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned');
-                deepEqual(terrain.processed, [1, 2, 3, 4, 7, 8, 6, 11, 5, 12, 20, 15, 10, 16]);
-            });
+            //test('terrain at level 2 from "2"', function () {
+            //    var cam = new Camera();
+            //    cam.p = vec3.create([-77, 0, 77]);
+            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+            //    var indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '0 fanned');
+            //    deepEqual(terrain.processed, [0]);
+            //    // ... second frame its children will draw themselves (2 will be fanned, siblings will be fanned towards it)...
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '2 fanned, 1,4 fanned towards 2, 3 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 3, 4]);
+            //    // ... third frame
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 3, 4, 7, 8, 6, 11, 5, 12, 20, 15, 10, 16]);
+            //    // ... fourth frame, no change
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 3, 4, 7, 8, 6, 11, 5, 12, 20, 15, 10, 16]);
+            //});
 
-            test('terrain at level 2 from "3"', function () {
-                var cam = new Camera();
-                cam.p = vec3.create([77, 0, -77]);
-                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-                var indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '0 fanned');
-                deepEqual(terrain.processed, [0]);
-                // ... second frame its children will draw themselves (3 will be fanned, siblings will be fanned towards it)...
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '3 fanned, 1,4 fanned towards 3, 2 unfanned');
-                deepEqual(terrain.processed, [1, 2, 3, 4]);
-                // ... third frame
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
-                deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
-                // ... fourth frame, no change
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
-                deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
-            });
+            //test('terrain at level 2 from "3"', function () {
+            //    var cam = new Camera();
+            //    cam.p = vec3.create([77, 0, -77]);
+            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+            //    var indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '0 fanned');
+            //    deepEqual(terrain.processed, [0]);
+            //    // ... second frame its children will draw themselves (3 will be fanned, siblings will be fanned towards it)...
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '3 fanned, 1,4 fanned towards 3, 2 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 3, 4]);
+            //    // ... third frame
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
+            //    // ... fourth frame, no change
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
+            //});
 
             test('terrain at level 8 from "1"', function () {
                 var cam = new Camera();
@@ -3789,12 +3866,59 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
                 equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
                 deepEqual(terrain.processed, [1, 2, 4, 3]);
 
-                //for (var i = 0; i < 9; i++) {
-                //    indexes = terrain.getIndexes(cam);
-                //    console.log(indexes.length);
-                //}
+                for (var i = 0; i < 5; i++) { // drill to the required depth...
+                    terrain.getIndexes(cam);
+                }
+                console.log('----');
+                Terrain.log = true;
+                indexes = terrain.getIndexes(cam); // ... and now we hit the new buffers
+                //Terrain.log = false;
+                console.log(indexes);
                 //console.log(indexes.join());
             });
+
+            test('Terrain.getXY', function () {
+                deepEqual(Terrain.getXY(0), { x: 0, y: 0 });
+                deepEqual(Terrain.getXY(1), { x: 0, y: 0 });
+                deepEqual(Terrain.getXY(2), { x: 0.0078125, y: 0 });
+                
+                deepEqual(Terrain.getXY(128), { x: 0.9921875, y: 0 });
+                deepEqual(Terrain.getXY(129), { x: 0, y: 0.0078125 });
+                deepEqual(Terrain.getXY(16257), { x: 0, y: 0.9921875 });
+                deepEqual(Terrain.getXY(16384), { x: 0.9921875, y: 0.9921875 });
+                deepEqual(Terrain.getXY(16385), { x: 0, y: 0 });
+                deepEqual(Terrain.getXY(16385), { x: 0, y: 0 });
+                deepEqual(Terrain.getXY(16386), { x: 0.00006103515625, y: 0 });
+            });
+
+            //test('terrain with new buffers', function () {
+            //    var cam = new Camera();
+            //    cam.p = vec3.create([64, 0, 64]);
+            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+            //    terrain.processed = [];
+            //    for (var cacheI in { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null, 6: null, 7: null, 9: null, 10: null, 11: null, 13: null, 14: null, 21: null, 22: null, 29: null, 30: null }) {
+            //        terrain.cache[cacheI] = new Node(cacheI, null, terrain);
+            //    }
+            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+            //    var indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '0 fanned');
+            //    deepEqual(terrain.processed, [0]);
+            //    // ... second frame its children will draw themselves (3 will be fanned, siblings will be fanned towards it)...
+            //    indexes = terrain.getIndexes(cam);
+            //    equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
+            //    deepEqual(terrain.processed, [1, 2, 4, 3]);
+
+            //    for (var i = 0; i < 5; i++) {
+            //    }
+            //    console.log(terrain);
+            //    console.log('----');
+            //    Terrain.log = true;
+            //    indexes = terrain.getIndexes(cam); // now we get the new buffers
+            //    Terrain.log = false;
+            //    console.log(indexes);
+            //    //console.log(indexes.join());
+            //});
+
 
             //    console.log('----');
             //    console.log(indexes.join());
@@ -4147,8 +4271,8 @@ webgl.common = (function () {
         //var grid = new Grid(self.gl, _shaderProgram3d, vec3.create([0, -1, 0]), 16);
         //self.objects.push(grid);
 
-        self.cam.p = vec3.create([0, 0, -90]);
-        //self.cam.yaw(-Math.PI / 4);
+        self.cam.p = vec3.create([90, 0, 90]);
+        self.cam.yaw(-Math.PI * 3 / 4);
 
         var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([-64, -1, -64]), null);
         self.objects.push(terrain);
