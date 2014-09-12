@@ -811,7 +811,7 @@ function Node(index, heightmap, terrain) {
         //console.log(index, distSq, sizeSq, _centre, cam.p);
         _splitOrMerge = Node.splitOrMerge.NONE;
         if (distSq < sizeSq * Node.splitScaling) {
-            _splitOrMerge = Node.getLevel(index) < 7 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
+            _splitOrMerge = Node.getLevel(index) < 9 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
         } else if (distSq > 2 * sizeSq * Node.splitScaling) {
             _splitOrMerge = Node.getLevel(index) > 0 ? Node.splitOrMerge.MERGE : Node.splitOrMerge.NONE;
         }
@@ -3283,33 +3283,33 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     _nodes[0] = null;
     self.cache[0] = new Node(0, heightmap, self);
 
-    self.getIndexes = function (cam) {
+    
+    self.getIndexes = function (cam, tick) {
         var allIndexes = {};
+        //if (tick % 2 == 0)
+        //    self.processed = []; // note: doesn't reduce average fps!
         self.processed = [];
+        var nNewBufferSets = 0;
         for (var index in _nodes) {
             var node = self.cache[index];
             var nodeIndexes = node.getIndexes(cam, _nodes); // e.g. { bufferIndex: 0, elementIndexes: [0,1,2,...] }
-            
-            //console.log(index, nodeIndexes);
 
             var bufferIndex = nodeIndexes.bufferIndex;
             if (!(bufferIndex in allIndexes)) {
-                allIndexes[nodeIndexes.bufferIndex] = [];
+                allIndexes[bufferIndex] = [];
             }
-            if (!(bufferIndex in vtxPosBufs)) {
+            if (!(bufferIndex in vtxPosBufs) && nNewBufferSets <= 1) { // can handle about 2 new bufferSets per frame at ~50 fps
                 if (Terrain.log)
-                    console.log('create bufferSet for ' + nodeIndexes.bufferIndex);
+                    console.log('create bufferSet for ' + nodeIndexes.bufferIndex); // 0, 4, 8, 12 or 16 new buffer sets per frame
                 self.createBufferSet(nodeIndexes.bufferIndex);
+                nNewBufferSets++;
             }
-            Array.prototype.push.apply(allIndexes[nodeIndexes.bufferIndex], nodeIndexes.elementIndexes);
+            Array.prototype.push.apply(allIndexes[bufferIndex], nodeIndexes.elementIndexes);
         }
-        
-        //console.log(allIndexes);
-
         return allIndexes;
     };
 
-    self.draw = function(cam) { // camera
+    self.draw = function(cam, tick) { // camera
         gl.useProgram(sp);
 
         webgl.common.pushMvMatrix();
@@ -3321,7 +3321,7 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         gl.uniformMatrix4fv(sp['uMvMatrix'], false, webgl.common.mvMatrix);
         gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
 
-        var indexes = self.getIndexes(cam);
+        var indexes = self.getIndexes(cam, tick);
         if (false) {
             indexes.forEach(function(ii) {
                 if (ii < 0 || ii > vtxPos.length / 3)
@@ -3331,8 +3331,14 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 
         for (var bufferIndex in indexes) {
             var elementIndexes = indexes[bufferIndex];
-            if (!(bufferIndex in vtxPosBufs))
-                console.log('no ' + bufferIndex);
+            if (!(bufferIndex in vtxPosBufs)) {
+                // get appropriate node from parent buffer and draw it fully fanned to cover the absence
+                var nodeIndex = Terrain.getParentNodeIndex(bufferIndex);
+                var coveringIndexes = Node.getIndexes(nodeIndex, [true, true, true, true]);
+                bufferIndex = coveringIndexes.bufferIndex;
+                elementIndexes = coveringIndexes.elementIndexes;
+                //throw 'bufferSet for index ' + bufferIndex + ' not created';
+            }
 
             gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[bufferIndex]);
             gl.vertexAttribPointer(sp['aVtxPos'], 3, gl.FLOAT, false, 0, 0);
@@ -3363,28 +3369,9 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     };
 
     self.createBufferSet = function (bufferIndex) { // create the position, normal, and element index buffers for this buffer index
-        
-        //                              buffer level | first in level | side
-        // 0 => offset = 0,0            0              0                1
-        
-        // 1 => offset = 0,0            1              1                128
-        // 2 => offset = 1/128, 0       1              1                128
-        // 128 => offset = 127/128, 0   1              1                128
-        // 129 => 0, 1/128              1              1                128
-        // 16384 => 127/128, 127/128    1              1                128
-        
-        // 16385 => 0,0                 2              16385            16384
-        // 16386 => 1/16384,0           2              16385            16384
-
-        // buffer level = (int)log(16383 * index + 1) / log(16384)
-        // first in level...
-        // side = 128 ^ buffer level
-        // (index - first in level) % side / side
-
         var bufferLevel = Terrain.getBufferLevel(bufferIndex);
         var xy = Terrain.getXY(bufferIndex, bufferLevel);
         var side = Math.pow(128, bufferLevel);
-        //console.log(xy);
         var vtxPos = [];
         var vtxNor = [];
         for (var i = 0; i < 129 * 129; i++) {
@@ -3412,27 +3399,53 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         }
     };
 
+    self.createBufferSet(0);
+
     return self;
 }
 
-Terrain.getBufferLevel = function (index) {
-    return Math.floor(Math.log(16383 * index + 1) / Math.log(16384));
+Terrain.getBufferLevel = function (bufferIndex) {
+    return Math.floor(Math.log(16383 * bufferIndex + 1) / Math.log(16384));
 };
 
 Terrain.getFirstIndexOfBufferLevel = function (level) {
     return (Math.pow(16384, level) - 1) / 16383;
 };
 
-Terrain.getXY = function (index, level, firstIndexOfBufferLevel) { // xy of top left
+Terrain.getXY = function (bufferIndex, level, firstIndexOfBufferLevel) { // xy of top left
     if (!level)
-        level = Terrain.getBufferLevel(index);
+        level = Terrain.getBufferLevel(bufferIndex);
     if (!firstIndexOfBufferLevel)
         firstIndexOfBufferLevel = Terrain.getFirstIndexOfBufferLevel(level);
 
     var side = Math.pow(128, level);
-    var x = ((index - firstIndexOfBufferLevel) % side) / side;
-    var y = Math.floor((index - firstIndexOfBufferLevel) / side) / side;
+    var x = ((bufferIndex - firstIndexOfBufferLevel) % side) / side;
+    var y = Math.floor((bufferIndex - firstIndexOfBufferLevel) / side) / side;
     return { x: x, y: y };
+};
+
+Terrain.getParentIndex = function (bufferIndex) {
+    var level = Terrain.getBufferLevel(bufferIndex);
+    if (level === 0)
+        throw 'Cannot get parent of level 0';
+
+    var xy = Terrain.getXY(bufferIndex, level);
+    var parentSide = Math.pow(128, level - 1);
+    return Terrain.getFirstIndexOfBufferLevel(level - 1) + Math.floor(xy.x * parentSide) + Math.floor(xy.y * parentSide) * parentSide;
+};
+
+Terrain.getParentNodeIndex = function (bufferIndex) {
+    if (bufferIndex === 0)
+        throw 'bufferIndex 0 has no parent node';
+
+    var level = Terrain.getBufferLevel(bufferIndex);
+    var nodeLevel = 7 * level - 1;
+
+    var side = Math.pow(2, nodeLevel);
+    var xy = Terrain.getXY(bufferIndex, level);
+
+    var first = Node.getFirstIndexOfLevel(nodeLevel);
+    return first + Math.floor(side * xy.x) + side * Math.floor(side * xy.y);
 };
 
 Terrain.log = false;
@@ -3713,7 +3726,13 @@ Terrain.log = false;
 
                 deepEqual(Node.getIndexes(5, [false, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [2080, 0, 32, 2080, 32, 4160, 2080, 4160, 4128, 2080, 4128, 0] });
 
+                // last level in 0th buffer
+                deepEqual(Node.getIndexes(1365, [false, false, false, false]), { 'bufferIndex': 0, 'elementIndexes': [130, 0, 2, 130, 2, 260, 130, 260, 258, 130, 258, 0] });
+                deepEqual(Node.getIndexes(1365, [true, true, true, true]), { 'bufferIndex': 0, 'elementIndexes': [130, 0, 1, 130, 1, 2, 130, 2, 131, 130, 131, 260, 130, 260, 259, 130, 259, 258, 130, 258, 129, 130, 129, 0] });
+
                 // 0th buffer too coarse, new 'buffer level' of 128 * 128 buffers, mapped to from 256 * 256 grid of nodes
+                deepEqual(Node.getIndexes(5461, [false, false, false, false]), { 'bufferIndex': 1, 'elementIndexes': [8320, 0, 128, 8320, 128, 16640, 8320, 16640, 16512, 8320, 16512, 0] });
+
                 deepEqual(Node.getIndexes(21845, [false, false, false, false]), { 'bufferIndex': 1, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] }); // top left, lands in buffer 1
                 deepEqual(Node.getIndexes(21846, [false, false, false, false]), { 'bufferIndex': 1, 'elementIndexes': [4224, 64, 128, 4224, 128, 8384, 4224, 8384, 8320, 4224, 8320, 64] }); // also lands in buffer 1, because 256 * 256 -> 128 * 128
                 deepEqual(Node.getIndexes(21847, [false, false, false, false]), { 'bufferIndex': 2, 'elementIndexes': [4160, 0, 64, 4160, 64, 8320, 4160, 8320, 8256, 4160, 8256, 0] }); // now lands in buffer 2
@@ -3869,11 +3888,8 @@ Terrain.log = false;
                 for (var i = 0; i < 5; i++) { // drill to the required depth...
                     terrain.getIndexes(cam);
                 }
-                console.log('----');
-                Terrain.log = true;
                 indexes = terrain.getIndexes(cam); // ... and now we hit the new buffers
-                //Terrain.log = false;
-                console.log(indexes);
+                //console.log(indexes);
                 //console.log(indexes.join());
             });
 
@@ -3889,6 +3905,16 @@ Terrain.log = false;
                 deepEqual(Terrain.getXY(16385), { x: 0, y: 0 });
                 deepEqual(Terrain.getXY(16385), { x: 0, y: 0 });
                 deepEqual(Terrain.getXY(16386), { x: 0.00006103515625, y: 0 });
+            });
+
+            test('Terrain.getParentNodeIndex', function () {
+                //deepEqual(Terrain.getParentNodeIndex(0), null); // throws
+                deepEqual(Terrain.getParentNodeIndex(1), 1365);
+                deepEqual(Terrain.getParentNodeIndex(2), 1365);
+                deepEqual(Terrain.getParentNodeIndex(129), 1365);
+                deepEqual(Terrain.getParentNodeIndex(3), 1366);
+                deepEqual(Terrain.getParentNodeIndex(258), 1429);
+                //deepEqual(Terrain.getParentNodeIndex(16385), 22369621); // check this one
             });
 
             //test('terrain with new buffers', function () {
@@ -4132,6 +4158,7 @@ webgl.common = (function () {
     var _viewportWidth = null;
     var _viewportHeight = null;
     var _t1 = new Date().getTime();
+    var _tick = 0;
     var _benchmarker = null;
     var _mvMatrixStack = []; // stack of model-view matrices
 
@@ -4222,14 +4249,16 @@ webgl.common = (function () {
         // opaque objects
         self.gl.disable(self.gl.BLEND);
         for (var i = 0; i < self.objects.length; i++) {
-            self.objects[i].draw(self.cam);
+            self.objects[i].draw(self.cam, _tick);
         }
 
         // transparent objects
         self.gl.enable(self.gl.BLEND);
         for (i = 0; i < self.transparentObjects.length; i++) { // TODO: order back to front
-            self.transparentObjects[i].draw(self.cam);
+            self.transparentObjects[i].draw(self.cam, _tick);
         }
+        
+        _tick++;
     }
 
     function initShaderPrograms() {
@@ -4271,7 +4300,7 @@ webgl.common = (function () {
         //var grid = new Grid(self.gl, _shaderProgram3d, vec3.create([0, -1, 0]), 16);
         //self.objects.push(grid);
 
-        self.cam.p = vec3.create([90, 0, 90]);
+        self.cam.p = vec3.create([68, 0, 68]);
         self.cam.yaw(-Math.PI * 3 / 4);
 
         var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([-64, -1, -64]), null);
