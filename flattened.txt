@@ -811,7 +811,7 @@ function Node(index, heightmap, terrain) {
         //console.log(index, distSq, sizeSq, _centre, cam.p);
         _splitOrMerge = Node.splitOrMerge.NONE;
         if (distSq < sizeSq * Node.splitScaling) {
-            _splitOrMerge = Node.getLevel(index) < 9 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
+            _splitOrMerge = Node.getLevel(index) < 12 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
         } else if (distSq > 2 * sizeSq * Node.splitScaling) {
             _splitOrMerge = Node.getLevel(index) > 0 ? Node.splitOrMerge.MERGE : Node.splitOrMerge.NONE;
         }
@@ -3283,7 +3283,6 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     _nodes[0] = null;
     self.cache[0] = new Node(0, heightmap, self);
 
-    
     self.getIndexes = function (cam, tick) {
         var allIndexes = {};
         //if (tick % 2 == 0)
@@ -3295,15 +3294,27 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
             var nodeIndexes = node.getIndexes(cam, _nodes); // e.g. { bufferIndex: 0, elementIndexes: [0,1,2,...] }
 
             var bufferIndex = nodeIndexes.bufferIndex;
+            if (!(bufferIndex in vtxPosBufs)) { // can handle about 2 new bufferSets per frame at ~50 fps
+
+                if (nNewBufferSets <= 0) {
+                    if (Terrain.log)
+                        console.log('create bufferSet for ' + nodeIndexes.bufferIndex); // 0, 4, 8, 12 or 16 new buffer sets per frame
+                    self.createBufferSet(nodeIndexes.bufferIndex);
+                    nNewBufferSets++;
+                } else {
+                    // get appropriate node from parent buffer and draw it fully fanned to cover the absence
+                    var nodeIndex = Terrain.getParentNodeIndex(bufferIndex);
+                    var coveringIndexes = Node.getIndexes(nodeIndex, [true, true, true, true]);
+                    bufferIndex = coveringIndexes.bufferIndex;
+                    nodeIndexes.elementIndexes = coveringIndexes.elementIndexes;
+                }
+
+            }
+
             if (!(bufferIndex in allIndexes)) {
                 allIndexes[bufferIndex] = [];
             }
-            if (!(bufferIndex in vtxPosBufs) && nNewBufferSets <= 1) { // can handle about 2 new bufferSets per frame at ~50 fps
-                if (Terrain.log)
-                    console.log('create bufferSet for ' + nodeIndexes.bufferIndex); // 0, 4, 8, 12 or 16 new buffer sets per frame
-                self.createBufferSet(nodeIndexes.bufferIndex);
-                nNewBufferSets++;
-            }
+
             Array.prototype.push.apply(allIndexes[bufferIndex], nodeIndexes.elementIndexes);
         }
         return allIndexes;
@@ -3322,22 +3333,16 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         gl.uniform3f(sp['uLightDirection'], lightDirection[0], lightDirection[1], lightDirection[2]);
 
         var indexes = self.getIndexes(cam, tick);
-        if (false) {
-            indexes.forEach(function(ii) {
-                if (ii < 0 || ii > vtxPos.length / 3)
-                    throw 'Invalid index: ' + ii;
-            });
-        }
 
         for (var bufferIndex in indexes) {
             var elementIndexes = indexes[bufferIndex];
             if (!(bufferIndex in vtxPosBufs)) {
-                // get appropriate node from parent buffer and draw it fully fanned to cover the absence
-                var nodeIndex = Terrain.getParentNodeIndex(bufferIndex);
-                var coveringIndexes = Node.getIndexes(nodeIndex, [true, true, true, true]);
-                bufferIndex = coveringIndexes.bufferIndex;
-                elementIndexes = coveringIndexes.elementIndexes;
-                //throw 'bufferSet for index ' + bufferIndex + ' not created';
+                //// get appropriate node from parent buffer and draw it fully fanned to cover the absence
+                //var nodeIndex = Terrain.getParentNodeIndex(bufferIndex);
+                //var coveringIndexes = Node.getIndexes(nodeIndex, [true, true, true, true]);
+                //bufferIndex = coveringIndexes.bufferIndex;
+                //elementIndexes = coveringIndexes.elementIndexes;
+                throw 'bufferSet for index ' + bufferIndex + ' not created';
             }
 
             gl.bindBuffer(gl.ARRAY_BUFFER, vtxPosBufs[bufferIndex]);
@@ -3780,97 +3785,97 @@ Terrain.log = false;
                 return 'unknown';
             }
 
-            //test('terrain far away', function () {
-            //    var cam = new Camera();
-            //    cam.p = vec3.create([999, 0, 999]);
-            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-            //    var indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '0 unfanned');
-            //});
+            test('terrain far away', function () {
+                var cam = new Camera();
+                cam.p = vec3.create([999, 0, 999]);
+                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                var indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '0 unfanned');
+            });
 
-            //test('terrain at level 1', function () {
-            //    var cam = new Camera();
-            //    cam.p = vec3.create([90, 0, 90]); // 90^2 + 90^2 = 16200 < 16384
-            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-            //    var indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '0 fanned');
-            //    deepEqual(terrain.processed, [0]);
-            //    // ... then its children will draw themselves...
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '1,2,3,4 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 3, 4]);
-            //    // ... and there will be no subsequent change
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '1,2,3,4 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 3, 4]);
-            //});
+            test('terrain at level 1', function () {
+                var cam = new Camera();
+                cam.p = vec3.create([90, 0, 90]); // 90^2 + 90^2 = 16200 < 16384
+                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+                var indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '0 fanned');
+                deepEqual(terrain.processed, [0]);
+                // ... then its children will draw themselves...
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '1,2,3,4 unfanned');
+                deepEqual(terrain.processed, [1, 2, 3, 4]);
+                // ... and there will be no subsequent change
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '1,2,3,4 unfanned');
+                deepEqual(terrain.processed, [1, 2, 3, 4]);
+            });
 
-            //test('terrain at level 2 from "1"', function () {
-            //    var cam = new Camera();
-            //    cam.p = vec3.create([77, 0, 77]);
-            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-            //    var indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '0 fanned');
-            //    deepEqual(terrain.processed, [0]);
-            //    // ... second frame its children will draw themselves (1 will be fanned, siblings will be fanned towards it)...
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 4, 3]);
-            //    // ... third frame
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned');
-            //    deepEqual(terrain.processed, [2, 1, 4, 3, 5, 8, 9, 6, 17, 7, 10, 13, 14, 11]);
-            //    // ... fourth frame, no change
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned');
-            //    deepEqual(terrain.processed, [2, 1, 4, 3, 5, 8, 9, 6, 17, 7, 10, 13, 14, 11]);
-            //});
+            test('terrain at level 2 from "1"', function () {
+                var cam = new Camera();
+                cam.p = vec3.create([77, 0, 77]);
+                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+                var indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '0 fanned');
+                deepEqual(terrain.processed, [0]);
+                // ... second frame its children will draw themselves (1 will be fanned, siblings will be fanned towards it)...
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
+                deepEqual(terrain.processed, [1, 2, 4, 3]);
+                // ... third frame
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned');
+                deepEqual(terrain.processed, [2, 1, 4, 3, 5, 8, 9, 6, 17, 7, 10, 13, 14, 11]);
+                // ... fourth frame, no change
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '5,6,9,10 unfanned, 2,3 fanned towards 1, 4 unfanned');
+                deepEqual(terrain.processed, [2, 1, 4, 3, 5, 8, 9, 6, 17, 7, 10, 13, 14, 11]);
+            });
 
-            //test('terrain at level 2 from "2"', function () {
-            //    var cam = new Camera();
-            //    cam.p = vec3.create([-77, 0, 77]);
-            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-            //    var indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '0 fanned');
-            //    deepEqual(terrain.processed, [0]);
-            //    // ... second frame its children will draw themselves (2 will be fanned, siblings will be fanned towards it)...
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '2 fanned, 1,4 fanned towards 2, 3 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 3, 4]);
-            //    // ... third frame
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 3, 4, 7, 8, 6, 11, 5, 12, 20, 15, 10, 16]);
-            //    // ... fourth frame, no change
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 3, 4, 7, 8, 6, 11, 5, 12, 20, 15, 10, 16]);
-            //});
+            test('terrain at level 2 from "2"', function () {
+                var cam = new Camera();
+                cam.p = vec3.create([-77, 0, 77]);
+                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+                var indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '0 fanned');
+                deepEqual(terrain.processed, [0]);
+                // ... second frame its children will draw themselves (2 will be fanned, siblings will be fanned towards it)...
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '2 fanned, 1,4 fanned towards 2, 3 unfanned');
+                deepEqual(terrain.processed, [1, 2, 3, 4]);
+                // ... third frame
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned');
+                deepEqual(terrain.processed, [1, 2, 3, 4, 7, 8, 6, 11, 5, 12, 20, 15, 10, 16]);
+                // ... fourth frame, no change
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '7,8,11,12 unfanned, 1,4 fanned towards 2, 3 unfanned');
+                deepEqual(terrain.processed, [1, 2, 3, 4, 7, 8, 6, 11, 5, 12, 20, 15, 10, 16]);
+            });
 
-            //test('terrain at level 2 from "3"', function () {
-            //    var cam = new Camera();
-            //    cam.p = vec3.create([77, 0, -77]);
-            //    var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-            //    // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-            //    var indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '0 fanned');
-            //    deepEqual(terrain.processed, [0]);
-            //    // ... second frame its children will draw themselves (3 will be fanned, siblings will be fanned towards it)...
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '3 fanned, 1,4 fanned towards 3, 2 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 3, 4]);
-            //    // ... third frame
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
-            //    // ... fourth frame, no change
-            //    indexes = terrain.getIndexes(cam);
-            //    equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
-            //    deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
-            //});
+            test('terrain at level 2 from "3"', function () {
+                var cam = new Camera();
+                cam.p = vec3.create([77, 0, -77]);
+                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+                var indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '0 fanned');
+                deepEqual(terrain.processed, [0]);
+                // ... second frame its children will draw themselves (3 will be fanned, siblings will be fanned towards it)...
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '3 fanned, 1,4 fanned towards 3, 2 unfanned');
+                deepEqual(terrain.processed, [1, 2, 3, 4]);
+                // ... third frame
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
+                deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
+                // ... fourth frame, no change
+                indexes = terrain.getIndexes(cam);
+                equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
+                deepEqual(terrain.processed, [1, 2, 3, 4, 13, 14, 17, 9, 10, 18, 15, 20, 5, 19]);
+            });
 
             test('terrain at level 8 from "1"', function () {
                 var cam = new Camera();
