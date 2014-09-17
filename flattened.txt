@@ -406,6 +406,7 @@ function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
     TODO:
     x - terrain with default heightmap
     x - terrain with many buffers
+    x - check the mesh - looks like distant nodes split when they shouldn't
     terrain as sphere
     terrain as sphere with noise
     skydome
@@ -813,7 +814,7 @@ function Node(index, heightmap, terrain) {
         //console.log(index, distSq, sizeSq, _centre, cam.p);
         _splitOrMerge = Node.splitOrMerge.NONE;
         if (distSq < sizeSq * Node.splitScaling) {
-            _splitOrMerge = Node.getLevel(index) < 12 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
+            _splitOrMerge = Node.getLevel(index) < 7 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
         } else if (distSq > 2 * sizeSq * Node.splitScaling) {
             _splitOrMerge = Node.getLevel(index) > 0 ? Node.splitOrMerge.MERGE : Node.splitOrMerge.NONE;
         }
@@ -832,7 +833,7 @@ Node.splitOrMerge = { SPLIT: 1, NONE: 0, MERGE: -1, HIDE: -2 };
 
 Node.neighbour = { NORTH: 0, SOUTH: 1, EAST: 2, WEST: 3 };
 
-Node.splitScaling = 10; // scale the point at which nodes split / merge
+Node.splitScaling = 20; // scale the point at which nodes split / merge
 
 Node.getLevel = function (index) {
     return Math.floor(Math.log(3 * index + 1) / Math.log(4));
@@ -3266,11 +3267,13 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     var self = {};
 
 // ReSharper disable InconsistentNaming
-    var _isWireFrame = true;
+    var _isWireFrame = false;
     var _vtxPosBufs = {};
     var _vtxNorBufs = {};
     var _vtxIndBufs = {};
     var _nodes = {};
+    var _noise = new SimplexNoise();
+    var _allIndexes = {};
 // ReSharper restore InconsistentNaming
 
     _nodes[0] = null;
@@ -3278,6 +3281,7 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     self.cache = {};
     self.processed = {};
     self.getP = function () { return p; };
+    self.getNodes = function() { return _nodes; }; // TODO: remove
 
     self.cache[0] = new Node(0, heightmap, self);
 
@@ -3286,14 +3290,15 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     //}
     //test(16640);
 
-    self.getIndexes = function (cam, tick) {
-        var allIndexes = {};
-        //if (tick % 2 == 0)
-        //    self.processed = {}; // note: doesn't reduce average fps!
+    self.getIndexes = function(cam, tick) {
+        if (tick % 8 != 0)
+            return _allIndexes;
+        _allIndexes = {};
         self.processed = {};
         var nNewBufferSets = 0;
         for (var index in _nodes) {
             var node = self.cache[index];
+            //var nodeIndexes = node.getIndexes({p:vec3.create([64,0,64])}, _nodes); // uncomment to fix cam at a position
             var nodeIndexes = node.getIndexes(cam, _nodes); // e.g. { bufferIndex: 0, elementIndexes: [0,1,2,...] }
 
             var bufferIndex = nodeIndexes.bufferIndex;
@@ -3314,13 +3319,13 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 
             }
 
-            if (!(bufferIndex in allIndexes)) {
-                allIndexes[bufferIndex] = [];
+            if (!(bufferIndex in _allIndexes)) {
+                _allIndexes[bufferIndex] = [];
             }
 
-            Array.prototype.push.apply(allIndexes[bufferIndex], nodeIndexes.elementIndexes);
+            Array.prototype.push.apply(_allIndexes[bufferIndex], nodeIndexes.elementIndexes);
         }
-        return allIndexes;
+        return _allIndexes;
     };
 
     self.draw = function(cam, tick) { // camera
@@ -3378,15 +3383,37 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         var vtxPos = [];
         var vtxNor = [];
         for (var i = 0; i < 129 * 129; i++) {
-            var x = i % 129;
-            var y = 0;
-            var z = Math.floor(i / 129);
-            vtxPos.push(side * xy.x + x / side);
+
+            var x = side * xy.x + (i % 129) / side;
+            var z = side * xy.y + Math.floor(i / 129) / side;
+            //var y = 0;
+
+            var scale = 4;
+            //var y = _noise.noises3d(x / scale, 0, z / scale, 2, 0.5);
+            var y = Math.sin(x / scale);
+
+            vtxPos.push(x);
             vtxPos.push(y);
-            vtxPos.push(side * xy.y + z / side);
-            vtxNor.push(0);
-            vtxNor.push(0);
-            vtxNor.push(1);
+            vtxPos.push(z);
+
+            var norX = 0;
+            var norY = 0;
+            var norZ = 1;
+
+            norX = Math.sin(x / scale);
+            norY = 0;
+            norZ = Math.cos(x / scale);
+
+            //var dS = 1;
+            //var dY_x = _noise.noises3d((x + dS) / 4, 0, z / 4, 2, 0.5) - y;
+            //var dY_z = _noise.noises3d(x / 4, 0, (z + dS) / 4, 2, 0.5) - y;
+            //var norX = -dY_x;
+            //var norZ = -dY_z;
+            //var norY = Math.sqrt(1 - norX * norX - norZ * norZ);
+
+            vtxNor.push(norX);
+            vtxNor.push(norY);
+            vtxNor.push(norZ);
         }
 
         _vtxPosBufs[bufferIndex] = gl ? gl.createBuffer() : null;
@@ -3469,12 +3496,13 @@ Terrain.log = false;
     <script type="text/javascript" src="common.js"></script>
     <script type="text/javascript" src="camera.js"></script>
     <script type="text/javascript" src="node.js"></script>
+    <script type="text/javascript" src="simplex.js"></script>
     <script type="text/javascript" src="terrain.js"></script>
 
     <script type="text/javascript">
         $(function () {
             module('Example Tests');
-
+            
             test('example test', function () {
                 expect(2); // expected number of assertions
                 var statementExpectedToBeTrue = true;
@@ -3486,7 +3514,7 @@ Terrain.log = false;
             module('Real Tests');
 
             Node.splitScaling = 1; // scale the point at which nodes split / merge
-
+            
             test('quaternions', function () {
                 var testQuat = quat4.fromAngleAxis(0, [0, 0, 0]);
                 equal(quat4.str(testQuat, 3), quat4.str([0, 0, 0, 1], 3), 'identity quat');
@@ -3870,25 +3898,43 @@ Terrain.log = false;
                 equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
                 deepEqual(terrain.processed, { 1: null, 2: null, 3: null, 4: null, 5: null, 9: null, 10: null, 13: null, 14: null, 15: null, 17: null, 18: null, 19: null, 20: null });
             });
-
+            
             test('terrain at level 8 from "1"', function () {
-                var cam = new Camera();
-                cam.p = vec3.create([64, 0, 64]);
-                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-                // first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
-                var indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '0 fanned');
-                // ... second frame its children will draw themselves (3 will be fanned, siblings will be fanned towards it)...
-                indexes = terrain.getIndexes(cam);
-                equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
-                deepEqual(terrain.processed, { 1: null, 2: null, 3: null, 4: null });
-
-                for (var i = 0; i < 5; i++) { // drill to the required depth...
-                    terrain.getIndexes(cam);
-                }
-                indexes = terrain.getIndexes(cam); // ... and now we hit the new buffers
-                //console.log(indexes);
-                //console.log(indexes.join());
+                //var cam = new Camera();
+                //cam.p = vec3.create([64, 0, 64]);
+                //var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                //// first frame will render the 0th node as if all its neighbours were split (fully fanned), while it queues up its children...
+                //var indexes = terrain.getIndexes(cam);
+                ////equal(indexesType(indexes), '0 fanned');
+                //// ... second frame its children will draw themselves (3 will be fanned, siblings will be fanned towards it)...
+                //console.log('2nd frame ----');
+                //console.log(terrain.getNodes());
+                //indexes = terrain.getIndexes(cam);
+                ////equal(indexesType(indexes), '1 fanned, 2,3 fanned towards 1, 4 unfanned');
+                //deepEqual(terrain.processed, { 1: null, 2: null, 3: null, 4: null });
+                //// third frame
+                //console.log('3rd frame ----');
+                //console.log(terrain.getNodes());
+                //indexes = terrain.getIndexes(cam);
+                //// 4th frame
+                //console.log('4th frame ----');
+                //console.log(terrain.getNodes());
+                //indexes = terrain.getIndexes(cam);
+                //// 5th frame
+                //console.log('5th frame ----');
+                //console.log(terrain.getNodes());
+                //indexes = terrain.getIndexes(cam);
+                //// 6th frame
+                //console.log('6th frame ----');
+                //console.log(terrain.getNodes());
+                //indexes = terrain.getIndexes(cam);
+                //// 7th frame
+                //console.log('7th frame ----');
+                //console.log(terrain.getNodes());
+                //indexes = terrain.getIndexes(cam);
+                //// 8th frame
+                //console.log('8th frame ----');
+                //console.log(terrain.getNodes());
             });
 
             test('Terrain.getXY', function () {
@@ -4226,7 +4272,7 @@ webgl.common = (function () {
         for (i = 0; i < self.transparentObjects.length; i++) { // TODO: order back to front
             self.transparentObjects[i].draw(self.cam, _tick);
         }
-        
+
         _tick++;
     }
 
@@ -4269,7 +4315,7 @@ webgl.common = (function () {
         //var grid = new Grid(self.gl, _shaderProgram3d, vec3.create([0, -1, 0]), 16);
         //self.objects.push(grid);
 
-        self.cam.p = vec3.create([68, 0, 68]);
+        self.cam.p = vec3.create([67, 0, 67]);
         self.cam.yaw(-Math.PI * 3 / 4);
 
         var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([-64, -1, -64]), null);
@@ -4278,6 +4324,5 @@ webgl.common = (function () {
 
     return self;
 }());
-
 
 
