@@ -407,11 +407,13 @@ function Grid(gl, sp, p, side) { // gl, shaderProgram, position, side
     x - terrain with default heightmap
     x - terrain with many buffers
     x - check the mesh - looks like distant nodes split when they shouldn't
+    x - terrain with noise
     terrain as sphere
     terrain as sphere with noise
     skydome
     atmosphere
     collision detection
+    triangle fans are faster?
 
     -->
 
@@ -814,7 +816,7 @@ function Node(index, heightmap, terrain) {
         //console.log(index, distSq, sizeSq, _centre, cam.p);
         _splitOrMerge = Node.splitOrMerge.NONE;
         if (distSq < sizeSq * Node.splitScaling) {
-            _splitOrMerge = Node.getLevel(index) < 12 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
+            _splitOrMerge = Node.getLevel(index) < 7 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
         } else if (distSq > 2 * sizeSq * Node.splitScaling) {
             _splitOrMerge = Node.getLevel(index) > 0 ? Node.splitOrMerge.MERGE : Node.splitOrMerge.NONE;
         }
@@ -3385,6 +3387,75 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
         var vtxPos = [];
         var vtxNor = [];
         for (var i = 0; i < 129 * 129; i++) {
+            var x, y, z = 0;
+
+            var x1 = i % 129;
+            var y1 = Math.floor(i / 129);
+
+            var xyz = Terrain.getXYZ(x1, y1);
+            xyz[0] -= 64;
+            xyz[1] -= 64;
+            xyz = vec3.normalize(xyz, []);
+            xyz = vec3.scale(xyz, 32);
+            x = xyz[0];
+            y = xyz[1];
+            z = xyz[2];
+
+
+
+            //var x = side * xy.x + (i % 129) / side;
+            //var z = side * xy.y + Math.floor(i / 129) / side;
+            //var y = 0;
+
+            //var scale = 16;
+            //y = _noise.noises3d(x / scale, 0, z / scale, 4, 0.5);
+
+            vtxPos.push(x);
+            vtxPos.push(y);
+            vtxPos.push(z);
+
+            var norX = 0;
+            var norY = 0;
+            var norZ = 1;
+
+            var nor = vec3.create([x, y, z]);
+            nor = vec3.normalize(nor, []);
+            norX = nor[0];
+            norY = nor[1];
+            norZ = nor[2];
+
+            //var dS = 1;
+            //var dY_x = _noise.noises3d((x + dS) / scale, 0, z / scale, 2, 0.5) - y;
+            //var dY_z = _noise.noises3d(x / scale, 0, (z + dS) / scale, 2, 0.5) - y;
+            //norX = -dY_x;
+            //norZ = -dY_z;
+            //norY = Math.sqrt(1 - norX * norX - norZ * norZ);
+
+            vtxNor.push(norX);
+            vtxNor.push(norY);
+            vtxNor.push(norZ);
+        }
+
+        _vtxPosBufs[bufferIndex] = gl ? gl.createBuffer() : null;
+        _vtxNorBufs[bufferIndex] = gl ? gl.createBuffer() : null;
+        _vtxIndBufs[bufferIndex] = gl ? gl.createBuffer() : null;
+        if (gl) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, _vtxPosBufs[bufferIndex]);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxPos), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(sp['aVtxPos']);
+            gl.bindBuffer(gl.ARRAY_BUFFER, _vtxNorBufs[bufferIndex]);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtxNor), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(sp['aVtxNor']);
+        }
+    };
+
+    self.createBufferSetFlat = function (bufferIndex) { // create the position, normal, and element index buffers for this buffer index
+        var bufferLevel = Terrain.getBufferLevel(bufferIndex);
+        var xy = Terrain.getXY(bufferIndex, bufferLevel);
+        var side = Math.pow(128, bufferLevel);
+        var vtxPos = [];
+        var vtxNor = [];
+        for (var i = 0; i < 129 * 129; i++) {
 
             var x = side * xy.x + (i % 129) / side;
             var z = side * xy.y + Math.floor(i / 129) / side;
@@ -3432,6 +3503,23 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 }
 
 Terrain.framesPerRecalc = 8;
+
+Terrain.getXYZ = function (i, j) {
+    if (i + j < 64) {
+        return vec3.create([64 - j, 64 - i, i + j - 64]);
+    }
+    else if (i - j < -64) {
+        return vec3.create([j - 64, i + 64, 64 + i - j]);
+    }
+    else if (i - j > 64) {
+        return vec3.create([j + 64, i - 64, 64 - (i - j)]);
+    }
+    else if (i + j > 192) {
+        return vec3.create([192 - j, 192 - i, 192 - i - j]);
+    } else {
+        return vec3.create([i, j, 64 - Math.abs(64 - i) - Math.abs(64 - j)]);
+    }
+};
 
 Terrain.getBufferLevel = function (bufferIndex) {
     return Math.floor(Math.log(16383 * bufferIndex + 1) / Math.log(16384));
@@ -3972,13 +4060,45 @@ Terrain.log = false;
                 var cam = new Camera();
                 cam.p = vec3.create([64, 0, 64]);
                 var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-                var t = benchmark(10000, function () {
+                var t = benchmark(10, function () {
                     terrain.getIndexes(cam);
                 });
-                console.log(t); // 10000 calls in 6s => 0.6ms per call (60 fps requires each frame => 16ms per frame)
+                //console.log(t); // 10000 calls in 6s => 0.6ms per call (60 fps requires each frame => 16ms per frame)
             });
             //    console.log('----');
             //    console.log(indexes.join());
+
+            test('Terrain.getXYZ', function () {
+                deepEqual(Terrain.getXYZ(0, 0), vec3.create([64, 64, -64]));
+                deepEqual(Terrain.getXYZ(32, 0), vec3.create([64, 32, -32]));
+                deepEqual(Terrain.getXYZ(64, 0), vec3.create([64, 0, 0]));
+                deepEqual(Terrain.getXYZ(96, 0), vec3.create([64, 32, -32]));
+                deepEqual(Terrain.getXYZ(128, 0), vec3.create([64, 64, -64]));
+
+                deepEqual(Terrain.getXYZ(0, 32), vec3.create([32, 64, -32]));
+                deepEqual(Terrain.getXYZ(32, 32), vec3.create([32, 32, 0]));
+                deepEqual(Terrain.getXYZ(64, 32), vec3.create([64, 32, 32]));
+                deepEqual(Terrain.getXYZ(96, 32), vec3.create([96, 32, 0]));
+                deepEqual(Terrain.getXYZ(128, 32), vec3.create([96, 64, -32]));
+
+                deepEqual(Terrain.getXYZ(0, 64), vec3.create([0, 64, 0]));
+                deepEqual(Terrain.getXYZ(32, 64), vec3.create([32, 64, 32]));
+                deepEqual(Terrain.getXYZ(64, 64), vec3.create([64, 64, 64]));
+                deepEqual(Terrain.getXYZ(96, 64), vec3.create([96, 64, 32]));
+                deepEqual(Terrain.getXYZ(128, 64), vec3.create([128, 64, 0]));
+
+                deepEqual(Terrain.getXYZ(0, 96), vec3.create([32, 64, -32]));
+                deepEqual(Terrain.getXYZ(32, 96), vec3.create([32, 96, 0]));
+                deepEqual(Terrain.getXYZ(64, 96), vec3.create([64, 96, 32]));
+                deepEqual(Terrain.getXYZ(96, 96), vec3.create([96, 96, 0]));
+                deepEqual(Terrain.getXYZ(128, 96), vec3.create([96, 64, -32]));
+
+                deepEqual(Terrain.getXYZ(0, 128), vec3.create([64, 64, -64]));
+                deepEqual(Terrain.getXYZ(32, 128), vec3.create([64, 96, -32]));
+                deepEqual(Terrain.getXYZ(64, 128), vec3.create([64, 128, 0]));
+                deepEqual(Terrain.getXYZ(96, 128), vec3.create([64, 96, -32]));
+                deepEqual(Terrain.getXYZ(128, 128), vec3.create([64, 64, -64]));
+            });
 
         });
     </script>
@@ -4331,10 +4451,12 @@ webgl.common = (function () {
         //var grid = new Grid(self.gl, _shaderProgram3d, vec3.create([0, -1, 0]), 16);
         //self.objects.push(grid);
 
-        self.cam.p = vec3.create([67, 0, 67]);
-        self.cam.yaw(-Math.PI * 3 / 4);
+        //self.cam.p = vec3.create([67, 0, 67]);
+        //self.cam.yaw(-Math.PI * 3 / 4);
 
-        var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([-64, -1, -64]), null);
+        self.cam.p = vec3.create([0, 0, -100]);
+
+        var terrain = new Terrain(self.gl, _shaderProgram3d, vec3.create([0, 0, 0]), null);
         self.objects.push(terrain);
     }
 
