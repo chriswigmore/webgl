@@ -814,7 +814,7 @@ function Node(index, heightmap, terrain) {
         //console.log(index, distSq, sizeSq, _centre, cam.p);
         _splitOrMerge = Node.splitOrMerge.NONE;
         if (distSq < sizeSq * Node.splitScaling) {
-            _splitOrMerge = Node.getLevel(index) < 7 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
+            _splitOrMerge = Node.getLevel(index) < 12 ? Node.splitOrMerge.SPLIT : Node.splitOrMerge.NONE;
         } else if (distSq > 2 * sizeSq * Node.splitScaling) {
             _splitOrMerge = Node.getLevel(index) > 0 ? Node.splitOrMerge.MERGE : Node.splitOrMerge.NONE;
         }
@@ -833,7 +833,7 @@ Node.splitOrMerge = { SPLIT: 1, NONE: 0, MERGE: -1, HIDE: -2 };
 
 Node.neighbour = { NORTH: 0, SOUTH: 1, EAST: 2, WEST: 3 };
 
-Node.splitScaling = 20; // scale the point at which nodes split / merge
+Node.splitScaling = 10; // scale the point at which nodes split / merge
 
 Node.getLevel = function (index) {
     return Math.floor(Math.log(3 * index + 1) / Math.log(4));
@@ -3290,8 +3290,10 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
     //}
     //test(16640);
 
-    self.getIndexes = function(cam, tick) {
-        if (tick % 8 != 0)
+    self.getIndexes = function (cam, tick) {
+        if (!tick)
+            tick = 0;
+        if (tick % Terrain.framesPerRecalc != 0)
             return _allIndexes;
         _allIndexes = {};
         self.processed = {};
@@ -3386,11 +3388,10 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 
             var x = side * xy.x + (i % 129) / side;
             var z = side * xy.y + Math.floor(i / 129) / side;
-            //var y = 0;
+            var y = 0;
 
-            var scale = 4;
-            //var y = _noise.noises3d(x / scale, 0, z / scale, 2, 0.5);
-            var y = Math.sin(x / scale);
+            var scale = 16;
+            y = _noise.noises3d(x / scale, 0, z / scale, 4, 0.5);
 
             vtxPos.push(x);
             vtxPos.push(y);
@@ -3400,16 +3401,12 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
             var norY = 0;
             var norZ = 1;
 
-            norX = Math.sin(x / scale);
-            norY = 0;
-            norZ = Math.cos(x / scale);
-
-            //var dS = 1;
-            //var dY_x = _noise.noises3d((x + dS) / 4, 0, z / 4, 2, 0.5) - y;
-            //var dY_z = _noise.noises3d(x / 4, 0, (z + dS) / 4, 2, 0.5) - y;
-            //var norX = -dY_x;
-            //var norZ = -dY_z;
-            //var norY = Math.sqrt(1 - norX * norX - norZ * norZ);
+            var dS = 1;
+            var dY_x = _noise.noises3d((x + dS) / scale, 0, z / scale, 2, 0.5) - y;
+            var dY_z = _noise.noises3d(x / scale, 0, (z + dS) / scale, 2, 0.5) - y;
+            norX = -dY_x;
+            norZ = -dY_z;
+            norY = Math.sqrt(1 - norX * norX - norZ * norZ);
 
             vtxNor.push(norX);
             vtxNor.push(norY);
@@ -3433,6 +3430,8 @@ function Terrain(gl, sp, p, heightmap) { // gl, shaderProgram, position, heightm
 
     return self;
 }
+
+Terrain.framesPerRecalc = 8;
 
 Terrain.getBufferLevel = function (bufferIndex) {
     return Math.floor(Math.log(16383 * bufferIndex + 1) / Math.log(16384));
@@ -3514,6 +3513,7 @@ Terrain.log = false;
             module('Real Tests');
 
             Node.splitScaling = 1; // scale the point at which nodes split / merge
+            Terrain.framesPerRecalc = 1;
             
             test('quaternions', function () {
                 var testQuat = quat4.fromAngleAxis(0, [0, 0, 0]);
@@ -3815,7 +3815,7 @@ Terrain.log = false;
                 var cam = new Camera();
                 cam.p = vec3.create([999, 0, 999]);
                 var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
-                var indexes = terrain.getIndexes(cam);
+                var indexes = terrain.getIndexes(cam, 0);
                 equal(indexesType(indexes), '0 unfanned');
             });
 
@@ -3898,7 +3898,7 @@ Terrain.log = false;
                 equal(indexesType(indexes), '13,14,15,16 unfanned, 1,4 fanned towards 3, 2 unfanned');
                 deepEqual(terrain.processed, { 1: null, 2: null, 3: null, 4: null, 5: null, 9: null, 10: null, 13: null, 14: null, 15: null, 17: null, 18: null, 19: null, 20: null });
             });
-            
+
             test('terrain at level 8 from "1"', function () {
                 //var cam = new Camera();
                 //cam.p = vec3.create([64, 0, 64]);
@@ -3961,6 +3961,22 @@ Terrain.log = false;
                 //deepEqual(Terrain.getParentNodeIndex(16385), 22369621); // check this one
             });
 
+            test('benchmarking terrain.getIndexes', function() {
+                //var cam = new Camera();
+                //cam.p = vec3.create([77, 0, -77]);
+                //var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                //var t = benchmark(10000, function () {
+                //    terrain.getIndexes(cam);
+                //});
+                //// console.log(t); // 10000 calls in 1s => 0.1ms per call (60 fps requires each frame => 16ms per frame)
+                var cam = new Camera();
+                cam.p = vec3.create([64, 0, 64]);
+                var terrain = new Terrain(null, null, vec3.create([-64, 0, -64]), null);
+                var t = benchmark(10000, function () {
+                    terrain.getIndexes(cam);
+                });
+                console.log(t); // 10000 calls in 6s => 0.6ms per call (60 fps requires each frame => 16ms per frame)
+            });
             //    console.log('----');
             //    console.log(indexes.join());
 
